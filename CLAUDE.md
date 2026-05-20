@@ -337,7 +337,7 @@ jsDelivr кешує файли до 12 годин. Для оновлення п�
 **Варіант 1 — Purge URL** (рекомендую під час розробки):
 
 ```
-https://purge.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js
+https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js
 ```
 
 Відкрити в браузері після пушу — кеш миттєво оновлюється.
@@ -345,7 +345,7 @@ https://purge.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js
 **Варіант 2 — версійний параметр у Webflow:**
 
 ```html
-<script src="https://cdn.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js?v=20260520-1"></script>
+<script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js?v=20260520-1"></script>
 ```
 
 Збільшувати `?v=` параметр при кожному оновленні.
@@ -356,7 +356,7 @@ https://purge.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js
 
 ```html
 <!-- Kulbit — кастомні скрипти -->
-<script src="https://cdn.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js"></script>
 ```
 
 ### Конвенція git-комітів
@@ -447,12 +447,12 @@ chore: оновив build.js
 - [x] Стек технологій визначений
 - [x] Прийняті всі ключові ADR
 - [x] Інфраструктура (GitHub + jsDelivr) обрана
+- [x] **Крок 0:** створення GitHub-репо (`Roman-Shostak/kulbit-webflow`) + локальної структури — `src/` з 7 модулями-скелетами (поки лише `console.log` + плейсхолдери), `dist/kulbit-main.js`, `build.js`, перший коміт `04dfdc3` запушено на `origin/main`
 
 ### В роботі / наступні кроки
 
-- [ ] **Крок 0:** створення GitHub-репо + локальної структури
-- [ ] **Крок 0.1:** перший пуш + тест jsDelivr
-- [ ] **Крок 0.2:** підключення в Webflow + перевірка `console.log` з усіх 7 модулів
+- [ ] **Крок 0.1:** перший пуш ✅ зроблено · **тест jsDelivr — ще не підтверджено** (відкрити purge-URL і переконатись, що файл віддається)
+- [ ] **Крок 0.2:** підключення в Webflow Footer Code + перевірка `console.log` з усіх 7 модулів у консолі staging — **ще не підтверджено**
 - [ ] **Крок 1:** ScrollSmoother init + smooth-wrapper/smooth-content у Webflow
 - [ ] **Крок 2:** створення 8 секцій + footer у Webflow Designer
 - [ ] **Крок 3:** Observer-логіка для snap-навігації між секціями
@@ -487,9 +487,9 @@ chore: оновив build.js
 
 ## 13. Контакти та посилання
 
-- **GitHub репо:** `https://github.com/USERNAME/kulbit-webflow` _(USERNAME замінити)_
-- **jsDelivr URL:** `https://cdn.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js`
-- **Webflow staging:** `https://kulbit-???.webflow.io` _(буде вказано)_
+- **GitHub репо:** `https://github.com/Roman-Shostak/kulbit-webflow`
+- **jsDelivr URL:** `https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js`
+- **Webflow staging:** `https://kulbit-gsap.webflow.io`
 - **Webflow продакшн:** `https://???` _(буде вказано після запуску)_
 
 ---
@@ -520,5 +520,5 @@ chore: оновив build.js
 
 ---
 
-_Останнє оновлення цього файлу: травень 2026, при старті проєкту._
+_Останнє оновлення цього файлу: 20 травня 2026 — Крок 0 завершено; підставлено реальний GitHub-username `Roman-Shostak`._
 _При значущих змінах архітектури — оновлювати розділ 10 (ADR) і розділ 11 (план)._

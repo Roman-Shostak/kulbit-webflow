@@ -2,6 +2,33 @@
 
 Кастомні скрипти для сайту Kulbit на платформі Webflow.
 
+## Розробка нового модуля
+
+```bash
+# 1. Відкрий проєкт
+cd ~/Projects/kulbit-webflow
+cursor .  # або code .
+
+# 2. Запусти Claude Code (в окремому терміналі або вкладці)
+claude
+
+# 3. Опиши Claude що треба зробити, отримай код
+# 4. Скопіюй код у відповідний файл src/XX-name.js
+
+# 5. Збери
+node build.js
+
+# 6. Запушти
+git add .
+git commit -m "feat: опис що зробив"
+git push
+
+# 7. Очисти кеш jsDelivr (відкрий в браузері)
+# https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js
+
+# 8. Перевір на Webflow staging — Cmd+Shift+R для hard refresh
+```
+
 ## Стек
 
 - GSAP + ScrollSmoother + Observer (snap-логіка замість fullpage.js)
@@ -17,22 +44,22 @@
 
 ## Збірка
 
-\`\`\`bash
+```bash
 node build.js
-\`\`\`
+```
 
 ## Підключення в Webflow
 
 **Project Settings → Custom Code → Footer Code:**
-\`\`\`html
 
-<script src="https://cdn.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js"></script>
-
-\`\`\`
+```html
+<script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js"></script>
+```
 
 ## Cache-busting
 
 Після пушу зайди на:
-`https://purge.jsdelivr.net/gh/USERNAME/kulbit-webflow@main/dist/kulbit-main.js`
+
+`https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js`
 
 Це миттєво оновить кеш jsDelivr.
