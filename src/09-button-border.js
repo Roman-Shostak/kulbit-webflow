@@ -51,23 +51,25 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       const svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
       svg.setAttribute('preserveAspectRatio', 'none');
-      // Оверлей як було (від padding-box, width/height:100%), але розширений назовні на
-      // config.offset px з усіх боків — щоб лінія ховеру вилізла на бордер (емпірично 2px).
+      // Оверлей точно на border-box (зсув -sw від padding-box) + явні розміри в px == viewBox →
+      // масштаб строго 1:1 на ОБОХ осях. Без цього (коли rendered != viewBox) штрих перекошує:
+      // тулиться до верху/правого боку, а ліворуч/знизу зʼявляється відступ. overflow:visible →
+      // штрих може вийти за бордер. config.offset виносить лінію НАЗОВНІ симетрично з усіх боків.
       const off = config.offset;
       Object.assign(svg.style, {
         position: 'absolute',
-        top: `-${off}px`, left: `-${off}px`,
-        width: `calc(100% + ${off * 2}px)`, height: `calc(100% + ${off * 2}px)`,
+        top: `-${sw}px`, left: `-${sw}px`,
+        width: `${w}px`, height: `${h}px`,
         pointerEvents: 'none', overflow: 'visible', zIndex: '2'
       });
 
       const i = sw / 2;
       const rect = document.createElementNS(NS, 'rect');
-      rect.setAttribute('x', i);
-      rect.setAttribute('y', i);
-      rect.setAttribute('width', w - sw);
-      rect.setAttribute('height', h - sw);
-      rect.setAttribute('rx', Math.max(0, r - i));
+      rect.setAttribute('x', i - off);                    // off>0 → штрих назовні від центру бордера
+      rect.setAttribute('y', i - off);
+      rect.setAttribute('width', (w - sw) + 2 * off);
+      rect.setAttribute('height', (h - sw) + 2 * off);
+      rect.setAttribute('rx', Math.max(0, r - i + off));
       rect.setAttribute('fill', 'none');
       rect.setAttribute('stroke', blue);
       rect.setAttribute('stroke-width', sw);
