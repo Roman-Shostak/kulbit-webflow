@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T18:12:33.743Z */
+/* Kulbit Webflow — зібрано 2026-05-21T18:27:41.137Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -292,11 +292,23 @@ console.log('[Kulbit] 03-sections.js завантажено');
     gsap.set(section2, { yPercent: 100 });
     if (btn) gsap.set(btn, { y: 0 });
 
-    // Геометрія 16:9
+    // Геометрія 16:9. ВАЖЛИВО: висоти беремо з РЕНДЕРУ елементів, а не з window.innerHeight.
+    //   На мобілці адресний бар робить 100vh (CSS) != innerHeight (JS): якщо рахувати
+    //   зсув секції 2 від innerHeight, а сама секція має height:100vh — між відео та
+    //   секцією зʼявляється смуга (видно фон сайту). Тож partial рахуємо від offsetHeight
+    //   самої секції 2 → top секції стає рівно під 16:9-відео.
     const video16h = Math.round(heroVideo.clientWidth * 9 / 16);
-    const partial = (video16h / window.innerHeight) * 100;
-    let btnY = 0;
-    if (btn) { const r = btn.getBoundingClientRect(); btnY = (video16h / 2) - (r.top + r.height / 2); }
+    const partial = (video16h / section2.offsetHeight) * 100;
+    // Видима висота = фіксований вьюпорт (#smooth-wrapper), а не innerHeight/100vh
+    const visibleH = app.wrapper ? app.wrapper.clientHeight : window.innerHeight;
+    // Центр кнопки: крок1 — центр видимого екрана; крок2 — центр 16:9-смуги (top-anchored)
+    let btnYScreen = 0, btnY16 = 0;
+    if (btn) {
+      const r = btn.getBoundingClientRect();
+      const btnCenter = r.top + r.height / 2;
+      btnYScreen = (visibleH / 2) - btnCenter;  // крок1
+      btnY16 = (video16h / 2) - btnCenter;       // крок2
+    }
 
     // Таймлайн із мітками
     const tl = gsap.timeline({ paused: true });
@@ -307,10 +319,11 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (has(el, 'fade')) to.autoAlpha = v(el, 'fade', 0);
       tl.to(el, to, 0);
     });
+    if (btn) tl.to(btn, { y: btnYScreen, duration: STEP, ease: EASE }, 0); // КРОК 1: кнопка в центр екрана
     tl.addLabel('s1');
     tl.to(heroVideo, { height: video16h, duration: STEP, ease: EASE }, 's1'); // КРОК 2
     tl.to(section2, { yPercent: partial, duration: STEP, ease: EASE }, 's1');
-    if (btn) tl.to(btn, { y: btnY, duration: STEP, ease: EASE }, 's1');
+    if (btn) tl.to(btn, { y: btnY16, duration: STEP, ease: EASE }, 's1'); // КРОК 2: кнопка в центр 16:9
     tl.addLabel('s2');
     tl.to(section2, { yPercent: 0, duration: SCROLL, ease: EASE }, 's2'); // КРОК 3 (накриття)
     tl.addLabel('s3');
