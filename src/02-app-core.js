@@ -61,11 +61,11 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     const accelerating = vel > prevVel * app.config.accelRatio && vel > app.config.minVelocity;
     prevVel = vel;
 
-    if (app.isAnimating) return;           // йде перехід — чекаємо завершення
+    if (app.isAnimating) return;           // йде перехід/крок — чекаємо завершення
     if (flinging && !accelerating) return; // це хвіст інерції — ігноруємо
 
     flinging = true;
-    app.goToSection(app.currentSectionIndex + dir); // goToSection визначено у 03-sections.js
+    app.advance(dir); // advance вирішує: крок чи секція (визначено у 03-sections.js)
   };
 
   // 05 — Створення Observer (один жест = один перехід)
@@ -83,13 +83,17 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     console.log('[Kulbit-Core] Observer створено (snap активний)');
   };
 
-  // 06 — Перепозиціонування при ресайзі (offsetTop секцій змінюється)
+  // 06 — Перепозиціонування при ресайзі (offsetTop секцій змінюється).
+  //      Репозиціонуємо трек напряму, НЕ через goToSection — щоб не скинути стан кроків.
   let resizeTimer = null;
   app.handleResize = () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      app.goToSection(app.currentSectionIndex, true); // миттєво, без анімації
-      console.log('[Kulbit-Core] ресайз — перепозиціоновано на секцію', app.currentSectionIndex);
+      const section = app.sections[app.currentSectionIndex];
+      if (section && app.content) {
+        gsap.set(app.content, { y: -section.el.offsetTop });
+        console.log('[Kulbit-Core] ресайз — перепозиціоновано на секцію', app.currentSectionIndex);
+      }
     }, 150);
   };
 
@@ -103,6 +107,7 @@ console.log('[Kulbit] 02-app-core.js завантажено');
 
     if (!app.lockViewport()) return;
     app.registerSections(); // визначено у 03-sections.js
+    app.registerSteps();    // визначено у 03-sections.js (детектить кроки з розмітки)
     app.setupObserver();
     window.addEventListener('resize', app.handleResize);
     console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');
