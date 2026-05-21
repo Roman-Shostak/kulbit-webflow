@@ -31,8 +31,9 @@ console.log('[Kulbit] 03-sections.js завантажено');
       return {
         el, index,
         isFooter: el.classList.contains('footer'),
-        steps: [], isStepped: false,   // reveal-кроки
-        timeline: null, isAnimated: false // кастомний таймлайн (ADR-009)
+        steps: [], isStepped: false,        // reveal-кроки
+        timeline: null, isAnimated: false,  // кастомний таймлайн desktop (ADR-009)
+        tabletTL: null, isTabletHero: false // спец таблет-hero (ADR-011)
       };
     });
 
@@ -58,16 +59,23 @@ console.log('[Kulbit] 03-sections.js завантажено');
     });
   };
 
-  // 03 — Реєстрація кастомних таймлайнів (ADR-009).
-  //      Тільки desktop (≥992px) — на таблеті/мобілці інший hero (Крок 8 / фаза 2).
-  //      Елементи прив'язуємо до секції через closest; ті, що поза секціями
-  //      (напр. header), йдуть до hero — секції 0.
+  // 03 — Реєстрація анімацій hero за брейкпоінтом (одноразово при init).
+  //      Desktop (≥992): атрибутні таймлайни (ADR-009). Tablet (768-991): спец hero (ADR-011).
+  //      <768 — поки без анімацій (мобілка, Крок 8). Зміна брейкпоінта → потрібен reload.
   app.registerAnimations = () => {
-    if (!window.matchMedia('(min-width: 992px)').matches) {
-      console.log('[Kulbit-Anim] не desktop — кастомні таймлайни секцій вимкнено');
-      return;
+    const w = window.innerWidth;
+    if (w >= 992) {
+      app.buildDesktopAnimations();
+    } else if (w >= 768) {
+      app.buildTabletHero();
+    } else {
+      console.log('[Kulbit-Anim] ширина <768 — анімацій hero немає (Крок 8)');
     }
+  };
 
+  // 03a — Desktop: атрибутні таймлайни по секціях (ADR-009).
+  //       Елементи прив'язуємо до секції через closest; ті, що поза секціями (header) → hero.
+  app.buildDesktopAnimations = () => {
     const animEls = document.querySelectorAll(ANIM_SELECTOR);
     if (!animEls.length) return;
 
@@ -84,8 +92,103 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (!section) return;
       section.timeline = app.buildSectionTimeline(els);
       section.isAnimated = true;
-      console.log(`[Kulbit-Anim] секція ${idx}: кастомний таймлайн, елементів: ${els.length}`);
+      console.log(`[Kulbit-Anim] desktop секція ${idx}: таймлайн, елементів: ${els.length}`);
     });
+  };
+
+  // 03b — Tablet (768-991): спец hero (ADR-011). 3 кроки; останній сплітається зі стекінгом секції 1.
+  //   крок1: -tablet атрибути (контент вниз+згас, header вгору, відео scale 1.3→1);
+  //   крок2: відео .hero-video → 16:9 (height) + секція 2 наповзає під 16:9 + кнопка в центр 16:9;
+  //   крок3: секція 2 повністю накриває (= перехід на секцію 1).
+  app.buildTabletHero = () => {
+    const hero = app.sections[0];
+    const section2 = app.sections[1] && app.sections[1].el;
+    if (!hero || !section2) { console.warn('[Kulbit-Tablet] немає hero / секції 2'); return; }
+    const heroVideo = hero.el.querySelector('.hero-video');
+    if (!heroVideo) { console.warn('[Kulbit-Tablet] немає .hero-video'); return; }
+    const btn = hero.el.querySelector('.hero-video-button');
+
+    const STEP = app.config.stepDuration, SCROLL = app.config.scrollDuration, EASE = app.config.ease;
+    const SUF = '-tablet';
+    const has = (el, n) => el.hasAttribute('data-kulbit-' + n + SUF);
+    const v = (el, n, fb) => num(el, 'data-kulbit-' + n + SUF, fb);
+    const sel = `[data-kulbit-y${SUF}],[data-kulbit-scale${SUF}],[data-kulbit-fade${SUF}]`;
+    const header = document.querySelector('[data-kulbit-header]');
+    const els = [...hero.el.querySelectorAll(sel)];
+    if (header && header.matches(sel)) els.push(header);
+
+    // Початкові стани (крок 0)
+    els.forEach((el) => {
+      const s = {};
+      if (has(el, 'y')) s.yPercent = 0;
+      if (has(el, 'scale')) { s.scale = v(el, 'scale-from', 1); s.transformOrigin = '50% 50%'; }
+      if (has(el, 'fade')) s.autoAlpha = 1;
+      gsap.set(el, s);
+    });
+    gsap.set(heroVideo, { bottom: 'auto', height: heroVideo.clientHeight });
+    gsap.set(section2, { yPercent: 100 });
+    if (btn) gsap.set(btn, { y: 0 });
+
+    // Геометрія 16:9
+    const video16h = Math.round(heroVideo.clientWidth * 9 / 16);
+    const partial = (video16h / window.innerHeight) * 100;
+    let btnY = 0;
+    if (btn) { const r = btn.getBoundingClientRect(); btnY = (video16h / 2) - (r.top + r.height / 2); }
+
+    // Таймлайн із мітками
+    const tl = gsap.timeline({ paused: true });
+    els.forEach((el) => { // КРОК 1 (усе разом)
+      const to = { duration: STEP, ease: EASE };
+      if (has(el, 'y')) to.yPercent = v(el, 'y', 0);
+      if (has(el, 'scale')) to.scale = v(el, 'scale', 1);
+      if (has(el, 'fade')) to.autoAlpha = v(el, 'fade', 0);
+      tl.to(el, to, 0);
+    });
+    tl.addLabel('s1');
+    tl.to(heroVideo, { height: video16h, duration: STEP, ease: EASE }, 's1'); // КРОК 2
+    tl.to(section2, { yPercent: partial, duration: STEP, ease: EASE }, 's1');
+    if (btn) tl.to(btn, { y: btnY, duration: STEP, ease: EASE }, 's1');
+    tl.addLabel('s2');
+    tl.to(section2, { yPercent: 0, duration: SCROLL, ease: EASE }, 's2'); // КРОК 3 (накриття)
+    tl.addLabel('s3');
+
+    hero.tabletTL = tl;
+    hero.isTabletHero = true;
+    app.currentStep = 0;
+    console.log('[Kulbit-Tablet] hero готовий: 16:9', video16h, 'partial', Math.round(partial));
+  };
+
+  // 03c — Таблет-hero крокування (ADR-011). Повертає true, якщо жест оброблено.
+  app.tabletHeroStep = (dir) => {
+    const hero = app.sections[0];
+    const tl = hero.tabletTL;
+    const labels = [0, 's1', 's2', 's3'], MAX = 3;
+    const idx = app.currentSectionIndex;
+
+    if (idx === 0) { // на hero — крокуємо таймлайн
+      if (dir > 0 && app.currentStep < MAX) {
+        app.isAnimating = true;
+        const ns = app.currentStep + 1;
+        tl.tweenTo(labels[ns], { onComplete: () => {
+          app.isAnimating = false;
+          if (ns === MAX) { app.currentSectionIndex = 1; app.currentStep = 0; if (app.updateVideoVisibility) app.updateVideoVisibility(); }
+          else app.currentStep = ns;
+        } });
+      } else if (dir < 0 && app.currentStep > 0) {
+        app.isAnimating = true;
+        const ns = app.currentStep - 1;
+        tl.tweenTo(labels[ns], { onComplete: () => { app.isAnimating = false; app.currentStep = ns; } });
+      }
+      return true; // hero повністю під контролем таблет-логіки
+    }
+    if (idx === 1 && dir < 0) { // повернення з секції 2 — відмотуємо хореографію hero
+      app.isAnimating = true;
+      app.currentSectionIndex = 0;
+      if (app.updateVideoVisibility) app.updateVideoVisibility();
+      tl.tweenTo(labels[MAX - 1], { onComplete: () => { app.isAnimating = false; app.currentStep = MAX - 1; } });
+      return true;
+    }
+    return false; // решта — стандартний стекінг
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
@@ -215,6 +318,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (instant) {
       app.currentSectionIndex = clamped;
       app.applyStackingPositions();
+      if (app.updateVideoVisibility) app.updateVideoVisibility();
       return;
     }
 
@@ -235,15 +339,20 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
     }
     app.currentSectionIndex = clamped;
+    if (app.updateVideoVisibility) app.updateVideoVisibility();
     console.log('[Kulbit-Nav] секція', prev, '→', clamped);
   };
 
   // 09 — advance: вирішує — наступний КРОК у поточній секції чи перехід на СЕКЦІЮ.
   //      Викликається обробником жесту (02-app-core.js) та кнопками.
   app.advance = (dir) => {
+    // Таблет-hero (ADR-011) бере на себе крокування + межу з секцією 1
+    const hero = app.sections[0];
+    if (hero && hero.isTabletHero && app.tabletHeroStep(dir)) return;
+
     const section = app.sections[app.currentSectionIndex];
 
-    // Кастомний таймлайн (hero): крок 0 ↔ 1
+    // Кастомний таймлайн desktop (hero): крок 0 ↔ 1
     if (section.isAnimated && section.timeline) {
       if (dir > 0 && app.currentStep < 1) {
         app.isAnimating = true;

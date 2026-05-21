@@ -1,5 +1,5 @@
 // ====================================================================
-// 08-video.js — Vimeo фонове відео: cover + перемикач звуку
+// 08-video.js — Vimeo фонове відео: cover + перемикач звуку + пауза/звук по видимості
 //
 //   Відео ЗАВЖДИ вставляється як <iframe> у Webflow Embed (НЕ через JS).
 //   Розмітка:
@@ -9,10 +9,9 @@
 //   • кнопка звуку (опційно, у тій же секції): [data-kulbit-sound] з іконками
 //     .icon-24 (динамік) та .icon-24.is-mute (перекреслена).
 //
-//   Модуль прикріплюється до iframe (Vimeo SDK) для керування звуком,
-//   рахує cover від контейнера (тримається під scale-анімацією) і перемикає
-//   muted + іконки по кліку. Скейл відео (1.3→1) робить рушій таймлайну
-//   (03-sections.js, ADR-009), не цей модуль.
+//   Пауза/звук по видимості: відео грає лише коли його секція поточна (не накрита
+//   стекінгом). Накрилось → пауза + мут; повернулось → грає + звук як був (намір
+//   користувача soundOn). updateVideoVisibility() кличе навігація (03-sections.js).
 // ====================================================================
 
 console.log('[Kulbit] 08-video.js завантажено');
@@ -22,7 +21,7 @@ console.log('[Kulbit] 08-video.js завантажено');
   const ASPECT = 16 / 9; // співвідношення відео (для cover-розрахунку)
 
   // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО контейнер; зайве ховає overflow:hidden.
-  //      Рахуємо від контейнера (не вьюпорта) — тримається й під час scale-анімації.
+  //      Рахуємо від контейнера (не вьюпорта) — тримається й під час scale/16:9-анімації.
   const applyCover = (box, iframe) => {
     const w = box.clientWidth, h = box.clientHeight;
     if (!w || !h) return;
@@ -45,9 +44,8 @@ console.log('[Kulbit] 08-video.js завантажено');
     if (iMute) gsap.to(iMute, { autoAlpha: muted ? 1 : 0, duration: dur });
   };
 
-  // 03 — Ініціалізація одного відео-блоку
+  // 03 — Ініціалізація одного відео-блоку. Повертає запис { player, sectionIndex, show, hide }.
   const initVideo = (box) => {
-    // Контейнер — система координат для iframe + ховає overflow (для cover)
     box.style.position = 'relative';
     box.style.overflow = 'hidden';
 
@@ -56,40 +54,53 @@ console.log('[Kulbit] 08-video.js завантажено');
       console.error('[Kulbit-Video] ❌ у [data-kulbit-video] немає <iframe> — встав ембед Vimeo з &background=1');
       return null;
     }
-
-    // Якщо iframe загорнутий у стандартну padding-обгортку Vimeo (56.25%) —
-    // витягуємо його прямо в контейнер (інакше cover ламається об обгортку).
+    // Витягуємо iframe зі стандартної padding-обгортки Vimeo (56.25%), якщо є
     if (iframe.parentElement && iframe.parentElement !== box) {
       const wrap = iframe.parentElement;
       box.appendChild(iframe);
       wrap.remove();
     }
 
-    // Прикріплюємось до наявного iframe (фон-параметри — у src ембеда)
     const player = new Vimeo.Player(iframe);
 
     player.ready().then(() => {
       applyCover(box, iframe);
-      // Перерахунок cover при зміні розміру контейнера (ресайз вікна)
       new ResizeObserver(() => applyCover(box, iframe)).observe(box);
       console.log('[Kulbit-Video] ✅ плеєр готовий (cover активний)');
     }).catch((e) => console.error('[Kulbit-Video] ❌ помилка завантаження:', e));
 
-    // 04 — Кнопка звуку (шукаємо в межах секції відео; може бути відсутня)
-    const scope = box.closest('[data-kulbit-section]') || document;
-    const btn = scope.querySelector('[data-kulbit-sound]');
+    let soundOn = false; // намір користувача (старт muted; autoplay вимагає muted)
+    const sectionEl = box.closest('[data-kulbit-section]');
+    const sectionIndex = sectionEl ? parseInt(sectionEl.getAttribute('data-section-index'), 10) : 0;
+
+    // Кнопка звуку (у тій же секції; може бути відсутня)
+    const btn = (sectionEl || document).querySelector('[data-kulbit-sound]');
     if (btn) {
-      setSoundIcons(btn, true, false); // старт muted (перекреслена), без анімації
+      setSoundIcons(btn, true, false); // старт muted (перекреслена)
       btn.addEventListener('click', () => {
-        player.getMuted().then((m) => player.setMuted(!m).then(() => {
-          const muted = !m;
-          setSoundIcons(btn, muted, true);
-          console.log('[Kulbit-Video] 🔊 muted →', muted);
-        }));
+        soundOn = !soundOn;
+        player.setMuted(!soundOn);
+        setSoundIcons(btn, !soundOn, true);
+        console.log('[Kulbit-Video] звук:', soundOn);
       });
     }
 
-    return player;
+    return {
+      player, sectionIndex,
+      show: () => { player.play(); player.setMuted(!soundOn); }, // грати + звук як хотів користувач
+      hide: () => { player.pause(); player.setMuted(true); }     // пауза + примусовий мут
+    };
+  };
+
+  // 04 — Пауза/звук по видимості: відео активне лише коли його секція поточна.
+  //      Кличе навігація (03-sections.js) при зміні currentSectionIndex.
+  window.KulbitApp = window.KulbitApp || {};
+  window.KulbitApp.updateVideoVisibility = () => {
+    const app = window.KulbitApp;
+    (app.videos || []).forEach((rec) => {
+      if (rec.sectionIndex === app.currentSectionIndex) rec.show();
+      else rec.hide();
+    });
   };
 
   // 05 — Старт після готовності DOM
@@ -103,11 +114,11 @@ console.log('[Kulbit] 08-video.js завантажено');
       console.log('[Kulbit-Video] відео-блоків [data-kulbit-video] немає');
       return;
     }
-    window.KulbitApp = window.KulbitApp || {};
-    window.KulbitApp.players = window.KulbitApp.players || [];
+    const app = window.KulbitApp = window.KulbitApp || {};
+    app.videos = app.videos || [];
     boxes.forEach((box) => {
-      const player = initVideo(box);
-      if (player) window.KulbitApp.players.push(player);
+      const rec = initVideo(box);
+      if (rec) app.videos.push(rec);
     });
   });
 })();
