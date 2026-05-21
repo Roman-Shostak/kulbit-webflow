@@ -1,7 +1,46 @@
 // ====================================================================
-// 04-navigation.js — Логіка кнопок-переходів (data-target-section)
+// 04-navigation.js — Кнопки-переходи (data-target-section / data-target-step)
+//                    Делегування: працює для будь-яких кнопок, доданих будь-коли
 // ====================================================================
 
 console.log('[Kulbit] 04-navigation.js завантажено');
 
-// Тут буде обробка кліків по кнопках (Крок 4)
+// ## — Обробник кнопок-переходів
+(() => {
+  window.KulbitApp = window.KulbitApp || {};
+  const app = window.KulbitApp;
+
+  // 01 — Резолв цілі: число → прямий індекс; рядок → пошук секції з data-section-name.
+  //      Іменовані якорі стійкі до реордеру секцій — рекомендовано для клієнтських кнопок.
+  const resolveIndex = (target) => {
+    if (target === null) return -1;
+    if (/^\d+$/.test(target)) return parseInt(target, 10);
+    const found = app.sections.find((s) => s.el.getAttribute('data-section-name') === target);
+    return found ? found.index : -1;
+  };
+
+  // 02 — Делегований клік по всьому документу (ловить і майбутні кнопки з Webflow)
+  const onClick = (e) => {
+    const trigger = e.target.closest('[data-target-section]');
+    if (!trigger) return;
+    e.preventDefault();
+
+    const index = resolveIndex(trigger.getAttribute('data-target-section'));
+    if (index < 0) {
+      console.warn('[Kulbit-Nav] ціль не знайдено:', trigger.getAttribute('data-target-section'));
+      return;
+    }
+
+    // data-target-step буде підтримано на Кроці 5 (покрокові анімації)
+    const step = trigger.getAttribute('data-target-step');
+    if (step !== null) {
+      console.log('[Kulbit-Nav] data-target-step =', step, '— крокова навігація буде на Кроці 5');
+    }
+
+    console.log('[Kulbit-Nav] клік → секція', index);
+    app.goToSection(index);
+  };
+
+  document.addEventListener('click', onClick);
+  console.log('[Kulbit-Nav] ✅ Обробник кнопок-переходів активний (делегування)');
+})();
