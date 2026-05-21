@@ -26,15 +26,29 @@ console.log('[Kulbit] 09-button-border.js завантажено');
   // ## — Налаштування одного елемента. Повертає функцію rebuild (для resize).
   const setupElement = (el) => {
     const blue = getBlue();
-    const state = { p: 0, center: 0, rect: null, svg: null, L: 0, w: 0, h: 0 };
+    const state = { p: 0, center: 0, mode: 'hover', rect: null, svg: null, L: 0, w: 0, h: 0 };
 
-    // Малюємо видимий сегмент довжиною frac*L, центрований на offset center (з обгортанням контуру)
+    // Ховер: видимий сегмент довжиною frac*L, центрований на offset center (з обгортанням контуру)
     const draw = (center, frac) => {
       if (!state.rect) return;
       const len = frac * state.L;
       state.rect.style.strokeDasharray = `${len} ${state.L - len}`;
       state.rect.style.strokeDashoffset = `${len / 2 - center}`;
       state.rect.style.opacity = frac; // проявлення через opacity
+    };
+
+    // Фокус: повне коло (без розриву), керуємо лише прозорістю (opacity 0 -> 1)
+    const drawFull = (frac) => {
+      if (!state.rect) return;
+      state.rect.style.strokeDasharray = `${state.L} 0`;
+      state.rect.style.strokeDashoffset = '0';
+      state.rect.style.opacity = frac;
+    };
+
+    // Рендер за поточним режимом (ховер — від курсора; фокус — повне коло)
+    const render = () => {
+      if (state.mode === 'focus') drawFull(state.p);
+      else draw(state.center, state.p);
     };
 
     // Перебудова SVG-оверлея під поточні розміри (init + resize)
@@ -82,7 +96,7 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       state.w = w;
       state.h = h;
       state.L = rect.getTotalLength();
-      draw(state.center, state.p); // відновлюємо поточний стан після перебудови
+      render(); // відновлюємо поточний стан (за режимом) після перебудови
     };
 
     // Найближча до курсора точка периметра (offset уздовж контуру)
@@ -99,20 +113,42 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       return best;
     };
 
-    // Анімація до стану target (1 = промальовано, 0 = згорнуто), від точки курсора
-    const animate = (target, e) => {
-      state.center = offsetFromMouse(e);
+    // Анімація прогресу p -> target (рендер за поточним режимом state.mode)
+    const tweenP = (target) => {
       gsap.killTweensOf(state);
       gsap.to(state, {
         p: target,
         duration: config.duration,
         ease: config.ease,
-        onUpdate: () => draw(state.center, state.p)
+        onUpdate: render
       });
     };
 
-    el.addEventListener('mouseenter', (e) => animate(1, e));
-    el.addEventListener('mouseleave', (e) => animate(0, e));
+    // Лінія активна, поки є ховер АБО фокус. При p=1 обидва режими дають однакове повне
+    // коло, тож перемикання hover<->focus у крайньому стані безшовне.
+    let hovered = false, focused = false;
+
+    el.addEventListener('mouseenter', (e) => {
+      hovered = true;
+      state.mode = 'hover';
+      state.center = offsetFromMouse(e); // ховер — промальовка від точки курсора
+      tweenP(1);
+    });
+    el.addEventListener('mouseleave', () => {
+      hovered = false;
+      if (focused) { state.mode = 'focus'; tweenP(1); } // лишилась у фокусі — тримаємо повне коло
+      else tweenP(0);
+    });
+
+    // Фокус (клавіатура/клік): повне коло плавно проявляється opacity 0 -> 1
+    el.addEventListener('focusin', () => {
+      focused = true;
+      if (!hovered) { state.mode = 'focus'; tweenP(1); }
+    });
+    el.addEventListener('focusout', () => {
+      focused = false;
+      if (!hovered) tweenP(0); // згортання (поточний режим)
+    });
 
     build();
     return build;
