@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T21:26:56.741Z */
+/* Kulbit Webflow — зібрано 2026-05-21T21:33:36.701Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -957,12 +957,11 @@ console.log('[Kulbit] 09-button-border.js завантажено');
     const build = () => {
       const cs = getComputedStyle(el);
       if (cs.position === 'static') el.style.position = 'relative';
-      // offsetWidth/offsetHeight — ЛЕЙАУТ-розмір border-box, ІМУННИЙ до CSS-transform (на кнопці/предку
-      // у нас є transform від стекінгу/анімацій). getBoundingClientRect дав би ВІЗУАЛЬНИЙ (зменшений
-      // трансформом) розмір, а SVG живе в лейаут-просторі → рамка виходила менша й тулилась у кут.
+      // offsetWidth/offsetHeight — ЛЕЙАУТ-розмір box (для viewBox + координат rect), імунний до transform.
       const w = el.offsetWidth;
       const h = el.offsetHeight;
-      const sw = parseFloat(cs.borderTopWidth) || 2;     // товщина лінії = товщині бордера
+      // Товщина лінії = outline-width (кнопка тепер з outline, а не border); фолбек на border / 2.
+      const sw = parseFloat(cs.outlineWidth) || parseFloat(cs.borderTopWidth) || 2;
       const r = parseFloat(cs.borderTopLeftRadius) || 0; // радіус кутів
 
       if (state.svg) state.svg.remove();
@@ -970,15 +969,14 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       const svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
       svg.setAttribute('preserveAspectRatio', 'none');
-      // Оверлей розтягуємо ТОЧНО на border-box через inset: -sw з усіх боків (top/left/right/bottom).
-      // inset рахується від padding-box батька в ЛЕЙАУТ-просторі (дробово й точно, без округлення
-      // offsetWidth і без впливу transform), тож права/нижня грань сходяться. preserveAspectRatio:none
-      // → viewBox розтягується рівно під цей box. overflow:visible + config.offset → штрих можна
-      // винести назовні (0 = рівно по бордеру).
+      // Кнопка БЕЗ бордера (outline + outline-offset:-Npx) → її box = видимий край. Тому SVG заповнює
+      // box через width/height:100% — percentage рахується від containing block у ЛЕЙАУТ-просторі
+      // (дробово, точно, transform-safe; SVG масштабується разом із кнопкою) — БЕЗ вимірів px.
+      // preserveAspectRatio:none → viewBox розтягується рівно під фактичний box, rect трасує периметр.
       const off = config.offset;
       Object.assign(svg.style, {
         position: 'absolute',
-        top: `-${sw}px`, left: `-${sw}px`, right: `-${sw}px`, bottom: `-${sw}px`,
+        top: '0', left: '0', width: '100%', height: '100%',
         pointerEvents: 'none', overflow: 'visible', zIndex: '2'
       });
 
