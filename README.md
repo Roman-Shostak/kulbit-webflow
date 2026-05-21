@@ -160,4 +160,32 @@ KulbitApp.goToSection(5);        // плавно на секцію 5
 KulbitApp.goToSection(0, true);  // миттєво (без анімації) нагору
 ```
 
+### 6. Плейсхолдер-кроки (тест покрокової секції без верстки)
+
+Впихає N кроків `[data-kulbit-step]` у задану секцію і перереєстровує. Далі скроль у цю секцію — кроки проявлятимуться по одному:
+
+```javascript
+(() => {
+  const app = window.KulbitApp;
+  const idx = 2, n = 3; // секція 2, 3 кроки
+  const sec = app.sections[idx].el;
+  sec.style.position = 'relative';
+  sec.querySelectorAll('.dbg-step').forEach((el) => el.remove());
+  for (let i = 1; i <= n; i++) {
+    const step = document.createElement('div');
+    step.className = 'dbg-step';
+    step.setAttribute('data-kulbit-step', '');
+    step.textContent = `Крок ${i}`;
+    Object.assign(step.style, {
+      position: 'absolute', left: '80px', top: `${15 + i * 20}%`,
+      font: '700 40px sans-serif', color: '#fff', zIndex: '5',
+      background: 'rgba(0,0,0,.65)', padding: '12px 22px', borderRadius: '10px'
+    });
+    sec.appendChild(step);
+  }
+  app.registerSteps();
+  console.log('[DBG] плейсхолдер-кроки додано в секцію', idx, '— скроль туди');
+})();
+```
+
 > 💡 Якщо при вставці зʼявляється `Invalid or unexpected token` — це довгий рядок зламався при копіюванні. Скопіюй сніппет ще раз цілком.
