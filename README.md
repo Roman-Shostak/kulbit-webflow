@@ -31,7 +31,8 @@ git push
 
 ## Стек
 
-- GSAP + ScrollSmoother + Observer (snap-логіка замість fullpage.js)
+- GSAP + **Observer** (жорсткий fullpage без вільного скролу, замість fullpage.js та ScrollSmoother — див. ADR-008 у CLAUDE.md)
+- Рух — трансформом контенту (`#smooth-content`), вьюпорт фіксований (`#smooth-wrapper`)
 - Webflow як no-code платформа
 - GitHub + jsDelivr CDN для роздачі коду
 
@@ -63,3 +64,100 @@ node build.js
 `https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js`
 
 Це миттєво оновить кеш jsDelivr.
+
+---
+
+## Тест-сніппети (DevTools Console)
+
+> Лише для розробки. Вставляти в консоль на **staging** після завантаження бандла.
+> Усі вони тимчасові — зникають після перезавантаження сторінки.
+
+### 1. Перевірка розмітки секцій
+
+Скільки снап-зупинок, їх висоти, footer, header:
+
+```javascript
+(() => {
+  const stops = document.querySelectorAll('[data-kulbit-section]');
+  console.log('[Check] зупинок:', stops.length, '(очікуємо 9)');
+  stops.forEach((el, i) => {
+    const h = Math.round(el.getBoundingClientRect().height);
+    console.log(`[Check] #${i} "${el.className}" — ${h}px`);
+  });
+  const header = document.querySelector('[data-kulbit-header]');
+  console.log('[Check] header:', !!header, header ? header.className : '');
+})();
+```
+
+### 2. Фарбування секцій + номери
+
+Робить snap видимим на порожній верстці (кожна секція — свій колір + номер):
+
+```javascript
+window.KulbitApp.sections.forEach((s) => {
+  s.el.style.backgroundColor = `hsl(${s.index * 40}, 65%, 55%)`;
+  s.el.style.position = 'relative';
+  let b = s.el.querySelector('.dbg');
+  if (!b) {
+    b = document.createElement('div');
+    b.className = 'dbg';
+    Object.assign(b.style, {
+      position: 'absolute', top: '16px', left: '16px', zIndex: '9999',
+      font: '700 56px/1 sans-serif', color: '#fff',
+      textShadow: '0 2px 8px rgba(0,0,0,.45)', pointerEvents: 'none'
+    });
+    s.el.appendChild(b);
+  }
+  b.textContent = s.isFooter ? `${s.index} · footer` : s.index;
+});
+```
+
+### 3. Тест-кнопки переходів
+
+Тимчасова панель кнопок (обробник `data-target-section` уже в бандлі). Секцію 4 для демо називаємо `pricing`:
+
+```javascript
+(() => {
+  const app = window.KulbitApp;
+  if (app.sections[4]) app.sections[4].el.setAttribute('data-section-name', 'pricing');
+  const old = document.querySelector('#kulbit-test-nav');
+  if (old) old.remove();
+  const panel = document.createElement('div');
+  panel.id = 'kulbit-test-nav';
+  Object.assign(panel.style, {
+    position: 'fixed', right: '16px', bottom: '16px', zIndex: '99999',
+    display: 'flex', flexDirection: 'column', gap: '8px'
+  });
+  [['→ секція 3', '3'], ['→ footer', '8'], ['→ pricing', 'pricing'], ['→ нагору', '0']].forEach(([label, target]) => {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.textContent = label;
+    a.setAttribute('data-target-section', target);
+    Object.assign(a.style, {
+      padding: '10px 14px', background: '#111', color: '#fff',
+      font: '600 14px sans-serif', borderRadius: '8px', textDecoration: 'none'
+    });
+    panel.appendChild(a);
+  });
+  document.body.appendChild(panel);
+})();
+```
+
+### 4. Калібрування анти-інерції (тачпад)
+
+`config` читається наживо, тож пороги можна крутити прямо в консолі й одразу тестувати скрол:
+
+```javascript
+KulbitApp.config.accelRatio = 1.2;  // менше = чутливіше до нових фліків (пропускає менше)
+KulbitApp.config.minVelocity = 40;  // нижче = реагує на слабші рухи
+KulbitApp.config.scrollDuration = 0.7; // тривалість переходу між секціями
+```
+
+### 5. Швидкий перехід на секцію
+
+```javascript
+KulbitApp.goToSection(5);        // плавно на секцію 5
+KulbitApp.goToSection(0, true);  // миттєво (без анімації) нагору
+```
+
+> 💡 Якщо при вставці зʼявляється `Invalid or unexpected token` — це довгий рядок зламався при копіюванні. Скопіюй сніппет ще раз цілком.
