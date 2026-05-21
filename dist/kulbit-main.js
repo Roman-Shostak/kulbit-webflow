@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T21:37:24.087Z */
+/* Kulbit Webflow — зібрано 2026-05-21T21:44:55.109Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -943,6 +943,7 @@ console.log('[Kulbit] 09-button-border.js завантажено');
   const setupElement = (el) => {
     const blue = getBlue();
     const state = { p: 0, center: 0, mode: 'hover', rect: null, svg: null, L: 0, w: 0, h: 0 };
+    const isHeroBtn = el.matches('.button.is-hero'); // лише hero-кнопка міняє кольори тексту/іконки
 
     // Ховер: видимий сегмент довжиною frac*L, центрований на offset center (з обгортанням контуру)
     const draw = (center, frac) => {
@@ -965,6 +966,17 @@ console.log('[Kulbit] 09-button-border.js завантажено');
     const render = () => {
       if (state.mode === 'focus') drawFull(state.p);
       else draw(state.center, state.p);
+    };
+
+    // Кольори hero-кнопки на активному стані: текст -> --colors--white-10,
+    // currentColor у SVG-іконках -> --colors--blue (наш бордер-SVG пропускаємо — він із явним stroke).
+    const setColors = (active) => {
+      if (!isHeroBtn) return;
+      el.style.color = active ? 'var(--colors--white-10)' : '';
+      el.querySelectorAll('svg').forEach((s) => {
+        if (s === state.svg) return;
+        s.style.color = active ? 'var(--colors--blue)' : '';
+      });
     };
 
     // Перебудова SVG-оверлея під поточні розміри (init + resize)
@@ -1049,21 +1061,25 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       state.mode = 'hover';
       state.center = offsetFromMouse(e); // ховер — промальовка від точки курсора
       tweenP(1);
+      setColors(true);
     });
     el.addEventListener('mouseleave', () => {
       hovered = false;
       if (focused) { state.mode = 'focus'; tweenP(1); } // лишилась у фокусі — тримаємо повне коло
       else tweenP(0);
+      setColors(hovered || focused);
     });
 
     // Фокус (клавіатура/клік): повне коло плавно проявляється opacity 0 -> 1
     el.addEventListener('focusin', () => {
       focused = true;
       if (!hovered) { state.mode = 'focus'; tweenP(1); }
+      setColors(true);
     });
     el.addEventListener('focusout', () => {
       focused = false;
       if (!hovered) tweenP(0); // згортання (поточний режим)
+      setColors(hovered || focused);
     });
 
     build();
