@@ -139,11 +139,12 @@ Kulbit — **клієнтський сайт-лендинг** який розр�
 
 | Девайс / орієнтація  | Поведінка                                     |
 | -------------------- | --------------------------------------------- |
-| Desktop (≥992px)     | Повноцінний fullpage-режим + анімації         |
-| Tablet portrait      | Повноцінний fullpage-режим                    |
-| Tablet landscape     | Повноцінний fullpage-режим                    |
-| Mobile portrait      | Повноцінний fullpage-режим                    |
-| **Mobile landscape** | **Попап «поверніть пристрій»** — fullpage off |
+| Desktop (≥992px)     | Fullpage + **desktop hero-анімація** (ADR-009) |
+| Tablet (768-991px)   | Fullpage + **окрема таблет hero-анімація** (ADR-011: 3 кроки, відео→16:9) |
+| Mobile (<768px)      | Fullpage (стекінг) **без hero-анімації** — окремий hero на Кроці 8 |
+| **Mobile landscape** | **Попап «поверніть пристрій»** — fullpage off (Крок 8, ADR-004) |
+
+> Брейкпоінт hero визначається ОДНОРАЗОВО при завантаженні (`registerAnimations` за `innerWidth`) — зміна ширини потребує reload. Стекінг секцій (ADR-010) працює на ВСІХ брейкпоінтах. Динамічне перемикання брейкпоінта (`gsap.matchMedia`) — на Крок 8.
 
 ---
 
@@ -154,43 +155,54 @@ Kulbit — **клієнтський сайт-лендинг** який розр�
 ```javascript
 window.KulbitApp = {
   // Стан
-  sections: [],              // масив зареєстрованих секцій { el, index, isFooter }
-  currentSectionIndex: 0,    // індекс поточної секції
-  currentStep: 0,            // поточний крок у покроковій секції (Крок 5)
-  isAnimating: false,        // блокування під час переходів
+  sections: [],              // масив секцій (заповнює registerSections, див. форму нижче)
+  currentSectionIndex: 0,    // індекс поточної (верхньої видимої) секції
+  currentStep: 0,            // поточний крок: reveal-кроки / desktop-таймлайн (0↔1) / таблет-hero (0..3)
+  isAnimating: false,        // блокування під час переходів (Observer ігнорує жести, поки true)
+  videos: [],                // записи відео { player, sectionIndex, show(), hide() } — заповнює 08-video.js
 
   // GSAP-інстанси та DOM
   observer: null,            // Observer instance (ядро навігації)
-  wrapper: null,             // #smooth-wrapper — фіксований вьюпорт (overflow hidden)
-  content: null,             // #smooth-content — рухомий трек із секціями (рухаємо transform-ом)
+  wrapper: null,             // #smooth-wrapper — фіксований вьюпорт (position:fixed; overflow:hidden)
+  content: null,             // #smooth-content — контейнер секцій (СТЕКІНГ: relative; height:100vh)
 
-  // Конфіг
+  // Конфіг (усі magic numbers тут)
   config: {
     scrollDuration: 0.7,       // тривалість переходу між секціями
-    stepDuration: 0.6,         // тривалість кроку анімації (Крок 5)
+    stepDuration: 0.6,         // тривалість кроку анімації
     autoPlayStepDuration: 0.3, // швидке догравання при кліку на кнопку (Крок 4)
     ease: 'power2.inOut',      // easing переходів
     accelRatio: 1.4,           // поріг прискорення для детекції нового фліка (анти-інерція тачпада)
     minVelocity: 60            // нижче цієї швидкості — «дотихання» інерції, ігноруємо
   },
 
-  // Методи (реалізовані у 02-app-core.js та 03-sections.js)
+  // Методи (02-app-core.js та 03-sections.js)
   init() { ... },             // lockViewport → registerSections → setupStacking → registerSteps → registerAnimations → setupObserver → resize
   lockViewport() { ... },     // фіксує #smooth-wrapper, вимикає вільний скрол
   registerSections() { ... }, // збирає [data-kulbit-section], проставляє data-section-index
   setupStacking() { ... },    // СТЕКІНГ (ADR-010): секції абсолютом одна над одною, z-index за індексом (рантайм)
   applyStackingPositions() { ... }, // секції 0..current — накладені (y:0), решта — під екраном (y:100%)
   registerSteps() { ... },    // reveal-кроки: збирає [data-kulbit-step] по секціях (з розмітки)
-  registerAnimations() { ... }, // кастомні таймлайни секцій з атрибутів (ADR-009; тільки desktop)
-  buildSectionTimeline(els) { ... }, // паузований GSAP-таймлайн із data-kulbit-y/-scale/-fade/-order
+  registerAnimations() { ... }, // ДИСПЕТЧЕР за innerWidth: ≥992→buildDesktopAnimations, 768-991→buildTabletHero, <768→нічого (ADR-011)
+  buildDesktopAnimations() { ... }, // desktop: атрибутні таймлайни по секціях (ADR-009)
+  buildSectionTimeline(els) { ... }, // паузований GSAP-таймлайн із data-kulbit-y/-scale/-scale-from/-fade/-order
+  buildTabletHero() { ... },  // таблет (768-991): 3-кроковий hero (ADR-011) → hero.tabletTL, hero.isTabletHero
+  tabletHeroStep(dir) { ... },// таблет: крокування hero (0↔3) + межа hero↔секція1; true якщо оброблено
   setupObserver() { ... },    // Observer + логіка жесту (анти-інерція) → кличе advance()
-  advance(dir) { ... },       // вирішує: крок (reveal або таймлайн) чи зміна секції
-  goToSection(index, instant, dir) { ... }, // СТЕКІНГ: ціль наповзає знизу / поточна сповзає; dir → стан кроків
+  advance(dir) { ... },       // делегує tabletHeroStep; інакше: reveal-крок / desktop-таймлайн / зміна секції
+  goToSection(index, instant, dir) { ... }, // СТЕКІНГ: ціль наповзає знизу / поточна сповзає; + updateVideoVisibility()
   goToSectionStep(index, step) { ... },     // кнопки: секція + конкретний крок (стекінг-позиції)
   resetSteps(section, shown) { ... },        // усі reveal-кроки секції сховати/показати
   playStep(section, i) / reverseStep(section, i) { ... }, // показати/сховати reveal-крок i
-  handleResize() { ... }      // перевиставляє стекінг-позиції (100vh/yPercent самі адаптуються)
+  handleResize() { ... },     // перевиставляє стекінг-позиції (100vh/yPercent самі адаптуються)
+  updateVideoVisibility() { ... } // 08-video.js: відео грає лише коли його секція поточна (пауза/мут на накритті)
 };
+
+// Форма елемента app.sections[i] (заповнює registerSections + register*):
+// { el, index, isFooter,
+//   steps: [], isStepped,            // reveal-кроки [data-kulbit-step]
+//   timeline, isAnimated,            // desktop-таймлайн (ADR-009)
+//   tabletTL, isTabletHero }         // таблет-hero (ADR-011)
 ```
 
 > **Механіка руху (СТЕКІНГ, ADR-010):** сторінка НЕ скролиться (`#smooth-wrapper` — `position: fixed; overflow: hidden`).
@@ -328,6 +340,13 @@ window.KulbitApp = {};
 - ❌ Використовувати Notion-інтеграцію без запиту
 - ❌ Робити фіктивні припущення про контекст — краще запитати
 
+### Консольні тести → файл `console.js` (рішення сесії 21.05.2026)
+
+- Код для вставки в консоль браузера пиши **у файл `console.js`** (корінь проєкту), а НЕ в чат.
+- Там лежить **лише АКТУАЛЬНИЙ тест**: новий код перезаписує старий (Roman відкриває файл, виділяє все, копіює).
+- `console.js` — у `.gitignore` (скретч-файл, не входить у бандл; build.js читає тільки `src/`).
+- Логи в консольних тестах — **ASCII-safe**: уникай `→`, дужок/лапок усередині рядкових літералів (`'(dir'`, `')'`) та апострофів у коментарях — Chrome при копіюванні з рендеру іноді псує ці символи (`Unexpected token`). Використовуй `->`, `'to'` тощо.
+
 ### При змінах існуючого коду
 
 - **Завжди шериш повний оновлений файл**, не фрагмент
@@ -371,6 +390,14 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 ```
 
 Збільшувати `?v=` параметр при кожному оновленні.
+
+**Варіант 3 — commit-pinned URL (НАЙНАДІЙНІШИЙ для негайного тесту):** ⚠️ на практиці `@main` на jsDelivr **сильно лагає** навіть після purge (edge-ноди тримають старий бандл). Commit-pinned URL immutable і завжди свіжий:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
+```
+
+Підставляєш короткий хеш свіжого коміту (напр. `@7fc781c`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Останній запушений коміт: `7fc781c`** (таблет-hero ADR-011).
 
 ### Підключення в Webflow
 
@@ -601,19 +628,17 @@ chore: оновив build.js
 
 **Стан верстки:** 9 зупинок розмічені `data-kulbit-section`, header — `data-kulbit-header`. Hero має реальний контент (H1, кнопки, текст, відео-блок, маска, кнопка звуку). Решта 7 секцій + footer — порожні.
 
-**⚠️ ЩО Roman МАЄ ДОДАТИ в Webflow перед тим як пушити/тестувати бандл** (атрибути на staging; локальний експорт застарілий):
-- `data-kulbit-fade="0"` на: `header`, `.hero-text-wrapper`, `.width-590-a-a`, `.button.is-hero`, `.hero-video-mask`
-- `data-kulbit-y`: `header="-400"`, `.hero-text-wrapper="-300"`, `.width-590-a-a="300"`, `.button.is-hero="300"`
-- `.width-height-100` (embed з відео): `data-kulbit-video`, `data-kulbit-scale="1"`, `data-kulbit-scale-from="1.3"`; усередині Embed — `<iframe>` Vimeo з `&background=1` у src (приклад нижче в чаті). id/hash через атрибути НЕ потрібні (вони в src iframe)
-- `.hero-video`: scale-атрибути НЕ потрібні (прибрані — відео скейлиться лише через embed)
-- `.hero-video-button`: `data-kulbit-sound`
-- **ТАБЛЕТ (`-tablet`):** `.flex-h-v-v.is-hero` → `data-kulbit-y-tablet="300"` + `data-kulbit-fade-tablet="0"`; `header` → `y-tablet="-400"` + `fade-tablet="0"`; `.width-height-100` → `data-kulbit-scale-tablet="1"` + `data-kulbit-scale-from-tablet="1.3"`; `.hero-video-mask` → `data-kulbit-fade-tablet="0"`
-- (числа `y`/швидкості — калібруються вільно, це лише атрибути; ADR-009)
+**Атрибути hero у Webflow** — Roman їх **уже додав** на staging під час тестів цієї сесії. Повна мапа (для довідки/відновлення) — у **§15**. Vimeo-iframe для Embed — теж у §15 (ID `1180786664`, hash `865b5a46af`).
 
-**Наступний крок:** push таблета (ADR-011) → перевірка на staging (десктоп ≥992 + таблет 768-991 з reload; вперед/назад, передача на секцію 2, відмотування, пауза/звук). Далі — **Крок 8** (мобілка <768 + динамічний `gsap.matchMedia` замість одноразового брейкпоінта + попап landscape), **Крок 7** (header standalone) або **Крок 6** (анімації решти секцій, коли буде контент).
-**Webflow:** секції лишай `relative` + `top:0` + `height:100vh` + `overflow:hidden` (JS перебиває на absolute на проді). Бандл сам визначає брейкпоінт при завантаженні — для тесту таблета звужуй вікно і РОБИ RELOAD.
+**Стан деплою:** усе **ЗАПУШЕНО на `origin/main`, останній коміт `7fc781c`** (таблет ADR-011). Бандл ~42.5 KB.
 
-**Не забути:** `purge` jsDelivr після пушу (інакше staging/прод тримає старий бандл до 12 год).
+**⚠️ ПЕРШЕ, що зробити в наступній сесії:** Roman ще **НЕ підтвердив запечену (бандл) версію таблета на staging** — консольний тест підтвердив, але живий бандл після `7fc781c` він тестував окремо. Перевірити: десктоп (≥992) + таблет (768-991, з RELOAD) — hero-анімація, стекінг, передача на секцію 2, повне відмотування назад, пауза/звук відео. Через кеш `@main` — тестувати через commit-pinned `@7fc781c` (див. §9, Варіант 3).
+
+**Далі за планом:** **Крок 8** (мобілка <768 + динамічний `gsap.matchMedia` замість одноразового брейкпоінта + попап landscape), **Крок 7** (header standalone — зараз header рухається лише в hero-таймлайні) або **Крок 6** (анімації решти секцій, коли зʼявиться контент).
+
+**Webflow-нагадування:** секції лишай `relative` + `top:0` + `height:100vh` + `overflow:hidden` (JS перебиває на absolute на проді). Бандл визначає брейкпоінт при завантаженні — для тесту таблета звужуй вікно і РОБИ RELOAD.
+
+**Не забути:** після пушу — `purge` jsDelivr (а реально для тесту — commit-pinned URL, бо `@main` лагає до 12 год).
 
 ---
 
@@ -638,9 +663,11 @@ chore: оновив build.js
 ## 13. Контакти та посилання
 
 - **GitHub репо:** `https://github.com/Roman-Shostak/kulbit-webflow`
-- **jsDelivr URL:** `https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js`
+- **jsDelivr URL:** `https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js` (для тесту — commit-pinned `@<hash>`, §9)
 - **Webflow staging:** `https://kulbit-gsap.webflow.io`
 - **Webflow продакшн:** `https://???` _(буде вказано після запуску)_
+- **Локальний експорт `kulbit-gsap.webflow/`** (у репо, в `.gitignore`) — **застарілий** (до додавання атрибутів). Для актуальної верстки: staging або **Webflow MCP** (спершу `webflow_guide_tool`).
+- **`console.js`** (корінь, у `.gitignore`) — скретч для консольних тестів (§8).
 
 ---
 
@@ -667,6 +694,87 @@ chore: оновив build.js
 
 1. **Запитати Romana**, не вгадувати
 2. **НЕ робити веб-пошук** автоматично — тільки якщо Roman явно попросив
+
+---
+
+## 15. Довідник: розмітка hero + Vimeo (самодостатній для контексту)
+
+> ⚠️ Локальний експорт `kulbit-gsap.webflow/` **застарілий** (опублікований до додавання атрибутів). Актуальний стан верстки — на **staging** (`kulbit-gsap.webflow.io`) і через **Webflow MCP** (`webflow_guide_tool` спершу). Класи/структура нижче стабільні.
+
+### DOM hero (секція 0)
+
+```html
+<header data-kulbit-header class="header">        <!-- absolute; z-index:100; inset:1.5rem 0 auto -->
+  ... logo + <button class="button" data-kulbit-border> ...
+</header>
+<main class="main">
+  <section data-kulbit-section class="section is-hero">
+    <div class="container">
+      <div class="flex-h-v-v is-hero">              <!-- блок контенту (h1 + кнопка + текст) -->
+        <div class="width-590-a-a position-relative"><h1 class="text-size-h1">…</h1><div class="hero-h1-blur"></div></div>
+        <div class="divider is-hero desktop-hide"></div>   <!-- сховано ≥992 -->
+        <button class="button is-hero">…Start Pilot… <div class="icon-56 w-embed">…</div></button>
+        <div class="hero-text-wrapper">…</div>       <!-- absolute (inset відносно .section) -->
+      </div>
+    </div>
+    <div class="hero-video-wrapper">                 <!-- z-index:-1; absolute inset:0 -->
+      <div class="hero-video-mask"></div>            <!-- z-index:75; радіальна віньєтка; pointer-events:none -->
+      <div class="hero-video">                       <!-- z-index:50; absolute inset:0; pointer-events:none -->
+        <div class="width-height-100 w-embed">       <!-- Embed: сюди iframe Vimeo (100%×100%) -->
+          <iframe …></iframe>
+        </div>
+      </div>
+    </div>
+    <button class="hero-video-button">               <!-- z-index:100; коло; absolute inset:0; margin:auto (центр) -->
+      <div class="hero-button-circle"><div class="hero-button-circle is-second">
+        <div class="icon-24 w-embed">…динамік…</div>            <!-- звук УВІМК -->
+        <div class="icon-24 is-mute w-embed">…перекреслений…</div> <!-- мут; CSS opacity:0, absolute -->
+      </div></div>
+    </button>
+  </section>
+  <section data-kulbit-section class="section"></section>  <!-- ×6 порожні -->
+</main>
+<footer data-kulbit-section class="section footer"></footer>
+```
+
+### Ключові CSS-факти (Webflow)
+
+- `.section { width:100%; min-height:100vh; position:relative; overflow:hidden }` — JS на проді перебиває на `absolute; height:100vh` (стекінг, ADR-010).
+- `.hero-text-wrapper` — `position:absolute`, точка відліку = `.section` (бо `.flex-h-v-v` і `.container` обидва `static`). **⚠️ GOTCHA:** воно DOM-дитина `.flex-h-v-v.is-hero`, тож трансформ на батькові тягне і його (transform re-roots containing block). Тому **desktop** анімує дітей окремо (`.width-590-a-a`, `.button.is-hero`), а не сам флекс; **tablet** навмисне рухає весь `.flex-h-v-v` (текст їде разом — це бажано).
+- `.hero-video-button { width:16.56rem; aspect-ratio:1; margin:auto; inset:0 }` — має **окремі CSS-правила під ≤991 і ≤767** (тому таблет рахує центр кнопки через `getBoundingClientRect`, не припускає vh/2).
+- **rem = viewport-based** (Wizardry converter): base `font-size:0.8333vw`, `@max-width:991px → 2.15vw`, `@max-width:479px → 4.10vw`. Тобто rem масштабується з шириною.
+
+### Vimeo — embed для вставки в `.width-height-100` (Webflow Embed)
+
+ID `1180786664`, hash `865b5a46af`. Встав **лише iframe** (без padding-обгортки), `&background=1` обов'язково:
+
+```html
+<iframe
+  src="https://player.vimeo.com/video/1180786664?h=865b5a46af&background=1&dnt=1"
+  allow="autoplay; fullscreen; picture-in-picture"
+  frameborder="0"
+  title="Kulbit Showreel"
+  style="display:block;width:100%;height:100%;border:0;"></iframe>
+```
+
+`player.js` Vimeo SDK підключено в Webflow Footer ПЕРЕД бандлом. Звук — кнопка `[data-kulbit-sound]` (старт muted).
+
+### Повна мапа data-атрибутів hero (на staging)
+
+| Елемент | Desktop (ADR-009) | Tablet (`-tablet`, ADR-011) | Інше |
+| --- | --- | --- | --- |
+| `header` (`data-kulbit-header`) | `data-kulbit-y="-400"` `data-kulbit-fade="0"` | `data-kulbit-y-tablet="-400"` `data-kulbit-fade-tablet="0"` | — |
+| `.hero-text-wrapper` | `data-kulbit-y="-300"` `data-kulbit-fade="0"` | (їде разом із `.flex-h-v-v`) | — |
+| `.width-590-a-a` (H1) | `data-kulbit-y="300"` `data-kulbit-fade="0"` | — | — |
+| `.button.is-hero` | `data-kulbit-y="300"` `data-kulbit-fade="0"` | — | — |
+| `.flex-h-v-v.is-hero` | — | `data-kulbit-y-tablet="300"` `data-kulbit-fade-tablet="0"` | — |
+| `.hero-video-mask` | `data-kulbit-fade="0"` | `data-kulbit-fade-tablet="0"` | — |
+| `.width-height-100` (embed) | `data-kulbit-scale="1"` `data-kulbit-scale-from="1.3"` | `data-kulbit-scale-tablet="1"` `data-kulbit-scale-from-tablet="1.3"` | `data-kulbit-video` + iframe ↑ |
+| `.hero-video` | — | — | (нічого; скейл лише через embed) |
+| `.hero-video-button` | — | — | `data-kulbit-sound` |
+| кнопка(и) у header/CTA | — | — | `data-kulbit-border` (ховер-бордер) |
+
+(Числа `y`/швидкості калібруються вільно — це лише атрибути.)
 
 ---
 
