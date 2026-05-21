@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T17:49:06.637Z */
+/* Kulbit Webflow — зібрано 2026-05-21T18:12:33.743Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -103,16 +103,20 @@ console.log('[Kulbit] 02-app-core.js завантажено');
   // 05 — Створення Observer (один жест = один перехід)
   app.setupObserver = () => {
     if (app.observer) app.observer.kill();
+    // На тач-девайсах напрямок свайпу інверсний до колеса: свайп знизу-вгору = гортати ДАЛІ
+    // (як нативний скрол). GSAP Observer шле для тача onUp на свайп угору, тож для
+    // pointer:coarse міняємо знак. Десктоп (колесо, pointer:fine) — без змін.
+    const touchInvert = window.matchMedia('(pointer: coarse)').matches;
     app.observer = Observer.create({
       target: window,
       type: 'wheel,touch,pointer',
       tolerance: 10,
       preventDefault: true, // блокуємо нативний скрол — рухаємось ТІЛЬКИ по секціях
-      onDown: (self) => handleGesture(1, self),
-      onUp: (self) => handleGesture(-1, self),
+      onDown: (self) => handleGesture(touchInvert ? -1 : 1, self),
+      onUp: (self) => handleGesture(touchInvert ? 1 : -1, self),
       onStop: () => { flinging = false; prevVel = 0; } // приймаємо новий ввід лише коли все стихло
     });
-    console.log('[Kulbit-Core] Observer створено (snap активний)');
+    console.log('[Kulbit-Core] Observer створено (snap активний), touchInvert:', touchInvert);
   };
 
   // 06 — Ресайз. У стекінгу (ADR-010) висота 100vh і yPercent самі підлаштовуються під
@@ -730,7 +734,7 @@ console.log('[Kulbit] 07-popup-form.js завантажено');
 //     у src ОБОВ'ЯЗКОВО &background=1 (autoplay + loop + muted + без UI),
 //     unlisted-відео → ?h=<хеш> у src.
 //   • кнопка звуку (опційно, у тій же секції): [data-kulbit-sound] з іконками
-//     .icon-24 (динамік) та .icon-24.is-mute (перекреслена).
+//     .icon-24-24-16 (динамік) та .icon-24-24-16.is-mute (перекреслена).
 //
 //   Пауза/звук по видимості: відео грає лише коли його секція поточна (не накрита
 //   стекінгом). Накрилось → пауза + мут; повернулось → грає + звук як був (намір
@@ -758,10 +762,10 @@ console.log('[Kulbit] 08-video.js завантажено');
     });
   };
 
-  // 02 — Стан іконок: muted → перекреслена (.is-mute); звук → динамік (.icon-24)
+  // 02 — Стан іконок: muted → перекреслена (.is-mute); звук → динамік (.icon-24-24-16)
   const setSoundIcons = (btn, muted, animate) => {
-    const iSound = btn.querySelector('.icon-24:not(.is-mute)');
-    const iMute = btn.querySelector('.icon-24.is-mute');
+    const iSound = btn.querySelector('.icon-24-24-16:not(.is-mute)');
+    const iMute = btn.querySelector('.icon-24-24-16.is-mute');
     const dur = animate ? 0.2 : 0;
     if (iSound) gsap.to(iSound, { autoAlpha: muted ? 0 : 1, duration: dur });
     if (iMute) gsap.to(iMute, { autoAlpha: muted ? 1 : 0, duration: dur });

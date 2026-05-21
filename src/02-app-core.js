@@ -72,16 +72,20 @@ console.log('[Kulbit] 02-app-core.js завантажено');
   // 05 — Створення Observer (один жест = один перехід)
   app.setupObserver = () => {
     if (app.observer) app.observer.kill();
+    // На тач-девайсах напрямок свайпу інверсний до колеса: свайп знизу-вгору = гортати ДАЛІ
+    // (як нативний скрол). GSAP Observer шле для тача onUp на свайп угору, тож для
+    // pointer:coarse міняємо знак. Десктоп (колесо, pointer:fine) — без змін.
+    const touchInvert = window.matchMedia('(pointer: coarse)').matches;
     app.observer = Observer.create({
       target: window,
       type: 'wheel,touch,pointer',
       tolerance: 10,
       preventDefault: true, // блокуємо нативний скрол — рухаємось ТІЛЬКИ по секціях
-      onDown: (self) => handleGesture(1, self),
-      onUp: (self) => handleGesture(-1, self),
+      onDown: (self) => handleGesture(touchInvert ? -1 : 1, self),
+      onUp: (self) => handleGesture(touchInvert ? 1 : -1, self),
       onStop: () => { flinging = false; prevVel = 0; } // приймаємо новий ввід лише коли все стихло
     });
-    console.log('[Kulbit-Core] Observer створено (snap активний)');
+    console.log('[Kulbit-Core] Observer створено (snap активний), touchInvert:', touchInvert);
   };
 
   // 06 — Ресайз. У стекінгу (ADR-010) висота 100vh і yPercent самі підлаштовуються під

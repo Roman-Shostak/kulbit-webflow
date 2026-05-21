@@ -7,7 +7,7 @@
 //     у src ОБОВ'ЯЗКОВО &background=1 (autoplay + loop + muted + без UI),
 //     unlisted-відео → ?h=<хеш> у src.
 //   • кнопка звуку (опційно, у тій же секції): [data-kulbit-sound] з іконками
-//     .icon-24 (динамік) та .icon-24.is-mute (перекреслена).
+//     .icon-24-24-16 (динамік) та .icon-24-24-16.is-mute (перекреслена).
 //
 //   Пауза/звук по видимості: відео грає лише коли його секція поточна (не накрита
 //   стекінгом). Накрилось → пауза + мут; повернулось → грає + звук як був (намір
@@ -35,10 +35,10 @@ console.log('[Kulbit] 08-video.js завантажено');
     });
   };
 
-  // 02 — Стан іконок: muted → перекреслена (.is-mute); звук → динамік (.icon-24)
+  // 02 — Стан іконок: muted → перекреслена (.is-mute); звук → динамік (.icon-24-24-16)
   const setSoundIcons = (btn, muted, animate) => {
-    const iSound = btn.querySelector('.icon-24:not(.is-mute)');
-    const iMute = btn.querySelector('.icon-24.is-mute');
+    const iSound = btn.querySelector('.icon-24-24-16:not(.is-mute)');
+    const iMute = btn.querySelector('.icon-24-24-16.is-mute');
     const dur = animate ? 0.2 : 0;
     if (iSound) gsap.to(iSound, { autoAlpha: muted ? 0 : 1, duration: dur });
     if (iMute) gsap.to(iMute, { autoAlpha: muted ? 1 : 0, duration: dur });
