@@ -16,7 +16,7 @@ console.log('[Kulbit] 09-button-border.js завантажено');
     duration: 0.3,  // тривалість промальовки / згортання
     ease: 'none',   // лінійний easing
     sampleN: 64,    // точність пошуку точки входу на периметрі
-    offset: 2       // зсув оверлея назовні (px) з усіх боків — щоб лінія лягла точно на бордер
+    offset: 0       // зсув штриха назовні від центру бордера (px); 0 = рівно по бордеру
   };
 
   // Колір зі змінної проєкту (з фолбеком)
@@ -41,8 +41,12 @@ console.log('[Kulbit] 09-button-border.js завантажено');
     const build = () => {
       const cs = getComputedStyle(el);
       if (cs.position === 'static') el.style.position = 'relative';
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
+      // ДРОБОВІ розміри border-box (getBoundingClientRect), а не округлені offsetWidth/offsetHeight:
+      // інакше права/нижня грань недотягують на частку пікселя (ліво/верх від 0 — точні, похибка
+      // накопичується до дальніх граней). Кнопка на момент build не трансформована (hero крок 0).
+      const bcr = el.getBoundingClientRect();
+      const w = bcr.width;
+      const h = bcr.height;
       const sw = parseFloat(cs.borderTopWidth) || 2;     // товщина лінії = товщині бордера
       const r = parseFloat(cs.borderTopLeftRadius) || 0; // радіус кутів
 
