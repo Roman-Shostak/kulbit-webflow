@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T15:05:43.702Z */
+/* Kulbit Webflow — зібрано 2026-05-21T15:53:32.487Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -114,16 +114,15 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     console.log('[Kulbit-Core] Observer створено (snap активний)');
   };
 
-  // 06 — Перепозиціонування при ресайзі (offsetTop секцій змінюється).
-  //      Репозиціонуємо трек напряму, НЕ через goToSection — щоб не скинути стан кроків.
+  // 06 — Ресайз. У стекінгу (ADR-010) висота 100vh і yPercent самі підлаштовуються під
+  //      новий розмір; для певності перевиставляємо дискретні позиції, якщо не йде анімація.
   let resizeTimer = null;
   app.handleResize = () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      const section = app.sections[app.currentSectionIndex];
-      if (section && app.content) {
-        gsap.set(app.content, { y: -section.el.offsetTop });
-        console.log('[Kulbit-Core] ресайз — перепозиціоновано на секцію', app.currentSectionIndex);
+      if (!app.isAnimating && app.applyStackingPositions) {
+        app.applyStackingPositions();
+        console.log('[Kulbit-Core] ресайз — позиції стекінгу оновлено');
       }
     }, 150);
   };
@@ -138,6 +137,7 @@ console.log('[Kulbit] 02-app-core.js завантажено');
 
     if (!app.lockViewport()) return;
     app.registerSections();   // визначено у 03-sections.js
+    app.setupStacking();      // стекінг-лейаут: секції абсолютом одна над одною (ADR-010)
     app.registerSteps();      // reveal-кроки [data-kulbit-step]
     app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
     app.setupObserver();
@@ -150,9 +150,10 @@ console.log('[Kulbit] 02-app-core.js завантажено');
 
 
 // ====================================================================
-// 03-sections.js — Секції + кроки: реєстрація з DOM, переходи, покрокові анімації
+// 03-sections.js — Секції + кроки: реєстрація з DOM, СТЕКІНГ-переходи, покрокові анімації
 //                  (методи додаються до KulbitApp з 02-app-core.js)
 //
+//   Навігація — СТЕКІНГ (ADR-010): секції накладаються одна на одну.
 //   Два типи покрокових секцій (детектяться з розмітки):
 //   • reveal-кроки  — елементи [data-kulbit-step] (дефолтний показ autoAlpha+y)
 //   • кастомний таймлайн — елементи з [data-kulbit-y] / [data-kulbit-scale] /
@@ -161,7 +162,7 @@ console.log('[Kulbit] 02-app-core.js завантажено');
 
 console.log('[Kulbit] 03-sections.js завантажено');
 
-// ## — Методи роботи з секціями, кроками та кастомними таймлайнами
+// ## — Методи роботи з секціями, стекінгом, кроками та кастомними таймлайнами
 (() => {
   window.KulbitApp = window.KulbitApp || {};
   const app = window.KulbitApp;
@@ -209,7 +210,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
   };
 
   // 03 — Реєстрація кастомних таймлайнів (ADR-009).
-  //      Тільки desktop (≥992px) — на таблеті/мобілці інший hero (Крок 8).
+  //      Тільки desktop (≥992px) — на таблеті/мобілці інший hero (Крок 8 / фаза 2).
   //      Елементи прив'язуємо до секції через closest; ті, що поза секціями
   //      (напр. header), йдуть до hero — секції 0.
   app.registerAnimations = () => {
@@ -278,6 +279,30 @@ console.log('[Kulbit] 03-sections.js завантажено');
     return tl;
   };
 
+  // — Стекінг-лейаут (ADR-010): секції абсолютом одна над одною, z-index за індексом.
+  //   JS застосовує це в РАНТАЙМІ — у Webflow секції лишаються relative (зручно редагувати).
+  app.setupStacking = () => {
+    if (app.content) {
+      app.content.style.position = 'relative';
+      app.content.style.height = '100vh';
+    }
+    app.sections.forEach((s) => {
+      Object.assign(s.el.style, {
+        position: 'absolute', top: '0', left: '0', width: '100%', height: '100vh'
+      });
+      s.el.style.zIndex = String(s.index); // наступна секція — вище
+    });
+    app.applyStackingPositions(); // початковий стан
+    console.log('[Kulbit-Stack] лейаут стекінгу застосовано, секцій:', app.sections.length);
+  };
+
+  // — Дискретні позиції стекінгу: секції 0..current накладені (y:0), решта під екраном (y:100%).
+  app.applyStackingPositions = () => {
+    app.sections.forEach((s) => {
+      gsap.set(s.el, { yPercent: s.index <= app.currentSectionIndex ? 0 : 100 });
+    });
+  };
+
   // 05 — Стан reveal-кроків секції: shown=false → усі сховані; true → усі показані.
   app.resetSteps = (section, shown) => {
     if (!section.isStepped) return;
@@ -312,45 +337,56 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-Steps] ◀ крок', i, '(секція', section.index + ')');
   };
 
-  // 08 — Перехід на секцію. dir задає стан кроків нової секції:
-  //      вхід згори (dir>0) → кроки/таймлайн на початку; знизу (dir<0) → у кінці (щоб відмотувати).
+  // 08 — Перехід на секцію (СТЕКІНГ, ADR-010): секції накладаються одна на одну.
+  //      Вниз — ціль наповзає знизу (yPercent 100→0) поверх поточної (вона лишається на місці);
+  //      вгору — поточна сповзає вниз (0→100), відкриваючи попередню (вона під нею на 0).
+  //      dir задає стан кроків нової секції: згори (dir>0) → на початку; знизу (dir<0) → у кінці.
   app.goToSection = (index, instant, dir) => {
-    if (!app.sections.length || !app.content) return;
+    if (!app.sections.length) return;
 
     const clamped = Math.max(0, Math.min(index, app.sections.length - 1));
     const prev = app.currentSectionIndex;
     if (clamped === prev && !instant) return; // межа — нікуди не йдемо
 
-    const section = app.sections[clamped];
-    app.currentSectionIndex = clamped;
+    const target = app.sections[clamped];
 
-    // Стан кроків нової секції
-    if (section.isAnimated && section.timeline) {
+    // Стан кроків/таймлайну нової секції
+    if (target.isAnimated && target.timeline) {
       const atEnd = dir < 0;                       // вхід знизу → таймлайн у кінці
-      section.timeline.progress(atEnd ? 1 : 0).pause();
+      target.timeline.progress(atEnd ? 1 : 0).pause();
       app.currentStep = atEnd ? 1 : 0;
-    } else if (section.isStepped) {
+    } else if (target.isStepped) {
       const shown = dir < 0;
-      app.resetSteps(section, shown);
-      app.currentStep = shown ? section.steps.length : 0;
+      app.resetSteps(target, shown);
+      app.currentStep = shown ? target.steps.length : 0;
     } else {
       app.currentStep = 0;
     }
 
-    const targetY = section.el.offsetTop;
     if (instant) {
-      gsap.set(app.content, { y: -targetY });
+      app.currentSectionIndex = clamped;
+      app.applyStackingPositions();
       return;
     }
 
     app.isAnimating = true;
-    gsap.to(app.content, {
-      y: -targetY,
-      duration: app.config.scrollDuration,
-      ease: app.config.ease,
-      onComplete: () => { app.isAnimating = false; }
-    });
-    console.log('[Kulbit-Nav] секція →', clamped);
+    if (dir > 0) {
+      // вниз: ціль наповзає знизу поверх поточної
+      gsap.to(target.el, {
+        yPercent: 0,
+        duration: app.config.scrollDuration, ease: app.config.ease,
+        onComplete: () => { app.isAnimating = false; }
+      });
+    } else {
+      // вгору: поточна сповзає вниз, відкриваючи попередню
+      gsap.to(app.sections[prev].el, {
+        yPercent: 100,
+        duration: app.config.scrollDuration, ease: app.config.ease,
+        onComplete: () => { app.isAnimating = false; }
+      });
+    }
+    app.currentSectionIndex = clamped;
+    console.log('[Kulbit-Nav] секція', prev, '→', clamped);
   };
 
   // 09 — advance: вирішує — наступний КРОК у поточній секції чи перехід на СЕКЦІЮ.
@@ -390,14 +426,14 @@ console.log('[Kulbit] 03-sections.js завантажено');
       }
     }
 
-    // Кроків у цьому напрямі немає → міняємо секцію
+    // Кроків у цьому напрямі немає → міняємо секцію (стекінг)
     app.goToSection(app.currentSectionIndex + dir, false, dir);
   };
 
-  // 10 — Перехід на секцію + конкретний крок (для кнопок data-target-step).
-  //      Кастомний таймлайн: крок ≥1 → кінець, інакше початок. Reveal: показати перші `step`.
+  // 10 — Перехід на секцію + конкретний крок (для кнопок data-target-step), стекінг.
+  //      Секції 0..clamped виставляємо накладеними (y:0), решту — під екраном (y:100%).
   app.goToSectionStep = (index, targetStep) => {
-    if (!app.sections.length || !app.content) return;
+    if (!app.sections.length) return;
 
     const clamped = Math.max(0, Math.min(index, app.sections.length - 1));
     const section = app.sections[clamped];
@@ -407,13 +443,16 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.currentSectionIndex = clamped;
     app.currentStep = step;
 
-    // Перехід на секцію (анімація треку)
+    // Стекінг-позиції (анімовано)
     app.isAnimating = true;
-    gsap.to(app.content, {
-      y: -section.el.offsetTop,
-      duration: app.config.scrollDuration,
-      ease: app.config.ease,
-      onComplete: () => { app.isAnimating = false; }
+    let pending = 0;
+    app.sections.forEach((s) => {
+      pending++;
+      gsap.to(s.el, {
+        yPercent: s.index <= clamped ? 0 : 100,
+        duration: app.config.scrollDuration, ease: app.config.ease,
+        onComplete: () => { if (--pending === 0) app.isAnimating = false; }
+      });
     });
 
     // Стан кроків

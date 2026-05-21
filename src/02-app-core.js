@@ -83,16 +83,15 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     console.log('[Kulbit-Core] Observer створено (snap активний)');
   };
 
-  // 06 — Перепозиціонування при ресайзі (offsetTop секцій змінюється).
-  //      Репозиціонуємо трек напряму, НЕ через goToSection — щоб не скинути стан кроків.
+  // 06 — Ресайз. У стекінгу (ADR-010) висота 100vh і yPercent самі підлаштовуються під
+  //      новий розмір; для певності перевиставляємо дискретні позиції, якщо не йде анімація.
   let resizeTimer = null;
   app.handleResize = () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      const section = app.sections[app.currentSectionIndex];
-      if (section && app.content) {
-        gsap.set(app.content, { y: -section.el.offsetTop });
-        console.log('[Kulbit-Core] ресайз — перепозиціоновано на секцію', app.currentSectionIndex);
+      if (!app.isAnimating && app.applyStackingPositions) {
+        app.applyStackingPositions();
+        console.log('[Kulbit-Core] ресайз — позиції стекінгу оновлено');
       }
     }, 150);
   };
@@ -107,6 +106,7 @@ console.log('[Kulbit] 02-app-core.js завантажено');
 
     if (!app.lockViewport()) return;
     app.registerSections();   // визначено у 03-sections.js
+    app.setupStacking();      // стекінг-лейаут: секції абсолютом одна над одною (ADR-010)
     app.registerSteps();      // reveal-кроки [data-kulbit-step]
     app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
     app.setupObserver();

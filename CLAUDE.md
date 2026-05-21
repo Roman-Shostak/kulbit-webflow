@@ -175,25 +175,29 @@ window.KulbitApp = {
   },
 
   // Методи (реалізовані у 02-app-core.js та 03-sections.js)
-  init() { ... },             // lockViewport → registerSections → registerSteps → registerAnimations → setupObserver → resize
+  init() { ... },             // lockViewport → registerSections → setupStacking → registerSteps → registerAnimations → setupObserver → resize
   lockViewport() { ... },     // фіксує #smooth-wrapper, вимикає вільний скрол
   registerSections() { ... }, // збирає [data-kulbit-section], проставляє data-section-index
+  setupStacking() { ... },    // СТЕКІНГ (ADR-010): секції абсолютом одна над одною, z-index за індексом (рантайм)
+  applyStackingPositions() { ... }, // секції 0..current — накладені (y:0), решта — під екраном (y:100%)
   registerSteps() { ... },    // reveal-кроки: збирає [data-kulbit-step] по секціях (з розмітки)
   registerAnimations() { ... }, // кастомні таймлайни секцій з атрибутів (ADR-009; тільки desktop)
   buildSectionTimeline(els) { ... }, // паузований GSAP-таймлайн із data-kulbit-y/-scale/-fade/-order
   setupObserver() { ... },    // Observer + логіка жесту (анти-інерція) → кличе advance()
   advance(dir) { ... },       // вирішує: крок (reveal або таймлайн) чи зміна секції
-  goToSection(index, instant, dir) { ... }, // зсув треку; dir задає стан кроків/таймлайну при вході
-  goToSectionStep(index, step) { ... },     // кнопки: секція + конкретний крок (швидке догравання)
+  goToSection(index, instant, dir) { ... }, // СТЕКІНГ: ціль наповзає знизу / поточна сповзає; dir → стан кроків
+  goToSectionStep(index, step) { ... },     // кнопки: секція + конкретний крок (стекінг-позиції)
   resetSteps(section, shown) { ... },        // усі reveal-кроки секції сховати/показати
   playStep(section, i) / reverseStep(section, i) { ... }, // показати/сховати reveal-крок i
-  handleResize() { ... }      // репозиція треку без скидання кроків
+  handleResize() { ... }      // перевиставляє стекінг-позиції (100vh/yPercent самі адаптуються)
 };
 ```
 
-> **Механіка руху:** сторінка НЕ скролиться (`#smooth-wrapper` — `position: fixed; overflow: hidden`).
-> Перехід = `gsap.to(content, { y: -section.offsetTop })`. Один жест = один перехід; інерція тачпада
-> відсікається порівнянням швидкості (`accelRatio` / `minVelocity`). Деталі — ADR-008.
+> **Механіка руху (СТЕКІНГ, ADR-010):** сторінка НЕ скролиться (`#smooth-wrapper` — `position: fixed; overflow: hidden`).
+> Секції — `position: absolute; top:0; height:100vh`, накладені одна на одну (z-index за індексом). Перехід
+> вниз = наступна секція наповзає знизу (`yPercent 100 → 0`) поверх поточної; вгору = поточна сповзає вниз
+> (`0 → 100`). Один жест = один перехід; інерція тачпада відсікається швидкістю (`accelRatio`/`minVelocity`, ADR-008).
+> Абсолют застосовує JS у рантаймі — у Webflow секції лишаються `relative` (зручно редагувати).
 
 ---
 
@@ -471,6 +475,8 @@ chore: оновив build.js
 
 ### ADR-008: Жорсткий fullpage на Observer + transform (без ScrollSmoother)
 
+> **Оновлено ADR-010:** модель *руху* змінено — замість лінійного зсуву треку (`y: -offsetTop`) тепер **стекінг секцій** (накладання). Observer + анти-інерція + фіксований вьюпорт із ADR-008 лишаються чинними.
+
 **Рішення:** прибрати ScrollSmoother. Сторінка взагалі не скролиться: `#smooth-wrapper` фіксований (`position: fixed; overflow: hidden`), а `#smooth-content` (трек із 9 секцій) рухаємо трансформом `gsap.to(content, { y: -section.offsetTop })`. Навігацію драйвить GSAP **Observer** (`preventDefault: true`). Один жест = один перехід.
 **Причини:**
 
@@ -505,6 +511,23 @@ chore: оновив build.js
 - Reusable: будь-яка секція стає анімованою, щойно на її елементах з'являються ці атрибути — без хардкоду «секція N = анімована».
 
 **Vimeo bg-відео (супутнє, `08-video.js`):** **рішення — відео ЗАВЖДИ вставляється як `<iframe>` у Webflow Embed** (НЕ створюється JS-ом з атрибутів). Контейнер — `[data-kulbit-video]`, усередині — `<iframe>` Vimeo; у `src` обов'язково `&background=1` (autoplay+loop+muted+без UI), unlisted → `?h=<хеш>`. Модуль прикріплюється `new Vimeo.Player(iframe)` (для звуку), за потреби витягує iframe зі стандартної padding-обгортки (56.25%) у контейнер, і рахує **cover від контейнера** (тримається під scale-анімацією; обгортка `56.25%` дала б letterbox). Кнопка звуку — `[data-kulbit-sound]` у тій же секції (старт muted, клік → `setMuted(false)`, перемикання іконок `.icon-24` ↔ `.icon-24.is-mute`). Чому iframe, а не JS-створення: Roman керує відео візуально в Webflow, воно одразу в HTML, менше розмітки-конфігу. Скейл відео робить рушій таймлайну (ADR-009), не відео-модуль.
+
+### ADR-010: Стекінг секцій (накладання) замість лінійного зсуву треку
+
+**Рішення:** секції **накладаються одна на одну** (стекінг), а не йдуть лінійним треком. Це було в задумі від початку (§4 / ADR-001 «секція 2 наїжджає на секцію 1»); на пивоті ADR-008 ми тимчасово зробили лінійний зсув — тепер замінюємо на справжній стекінг. **Глобально, на всіх девайсах.**
+
+**Механіка:**
+- Кожна `[data-kulbit-section]` — `position: absolute; top:0; left:0; width:100%; height:100vh`, `z-index = індекс` (наступна вище). Контейнер `#smooth-content` — `position: relative; height: 100vh`.
+- Початок: видима лише поточна і ті, що під нею (`yPercent: 0`); решта — під екраном (`yPercent: 100`).
+- **Скрол вниз (N→N+1):** секція N+1 наповзає знизу (`yPercent 100→0`) поверх N, яка лишається на місці.
+- **Скрол вгору (N→N-1):** секція N сповзає вниз (`0→100`), відкриваючи N-1.
+- Інтегровано зі snap і кроками: спершу кроки секції (reveal/таймлайн), потім стекінг-перехід. Вхід знизу → кроки/таймлайн секції у кінці (щоб відмотувати).
+
+**Абсолют — лише в рантаймі (важливо для Webflow):** `setupStacking` перебиває позиціонування JS-ом на проді. У Webflow Designer (Footer-код не виконується) секції лишаються `position: relative; top:0; height:100vh; overflow:hidden` — контент зручно редагувати. Геометрію тримає код, не залежить від Webflow-CSS.
+
+**Чому так, а не трек:** `yPercent` (відносно висоти) + `height:100vh` роблять позиції **resize-proof** — нічого не перераховувати по `offsetTop` (на відміну від ADR-008). `handleResize` лише перевиставляє дискретні позиції.
+
+**Реалізація:** `setupStacking` / `applyStackingPositions` + переписані `goToSection` і `goToSectionStep` (`03-sections.js`); виклик `setupStacking` в `init` (`02-app-core.js`). Замінює модель руху з ADR-008 (трек фіксований, рухаються секції). Перевірено консольним тестом.
 
 ---
 
@@ -549,14 +572,14 @@ chore: оновив build.js
 - [x] **Ховер-ефект бордера кнопки** — **завершено** (21.05.2026, `09-button-border.js`). На елементах з атрибутом `data-kulbit-border` синій бордер (`--colors--blue`) промальовується від точки курсора в обидва боки (SVG-обведення + анімований `stroke-dasharray`, товщина = товщині бордера), при відведенні стягується до точки виходу. Матова лінія + проявлення `opacity`, лінійний easing, 0.3с. Підтримка ресайзу й кількох елементів. **Дія Romana у Webflow:** додати кнопці custom attribute `data-kulbit-border`.
 - [x] **Vimeo bg-відео в hero** — **завершено** (`08-video.js`). Фоновий плеєр Vimeo SDK (`background: true` → autoplay+loop+muted, без UI), через `<iframe>` (unlisted-URL `/{id}/{hash}`). Cover рахується від контейнера (тримається під scale-анімацією). Звук вмикається у background-режимі по кліку — перевірено. Конвенція: контейнер `[data-kulbit-video]` + `data-kulbit-video-id`/`-video-hash`; кнопка `[data-kulbit-sound]` (старт muted = перекреслена іконка, клік → динамік). Скейл відео (1.3→1) робить рушій таймлайну (ADR-009), не відео-модуль. Деталі — [[vimeo-video-requirement]].
 
-### 🔖 Точка відновлення (сесія 21.05.2026 — hero-анімація + відео)
+### 🔖 Точка відновлення (сесія 21.05.2026 — hero + відео + стекінг)
 
 **Зроблено цієї сесії:**
 
 - **Hero — перша реальна кастомна анімація (ADR-009):** data-driven таймлайн. На скрол header+текст їдуть вгору, H1+кнопка — вниз, усе згасає (`fade=0`); відео `scale 1.3→1`; маска згасає — усе одночасно, тільки desktop, інтегровано в snap (крок 0↔1, reverse працює).
-- **`08-video.js`** (новий): фонове Vimeo (`background:true`, через iframe, unlisted `/{id}/{hash}`), cover від контейнера, кнопка звуку з перемиканням іконок. Звук у background-режимі вмикається — перевірено.
-- **`03-sections.js`:** додано рушій кастомних таймлайнів (`registerAnimations`, `buildSectionTimeline`) поряд із reveal-кроками. `02-app-core.js`: init кличе `registerAnimations`.
-- Бандл зібрано (~34 KB, 9 файлів). Усе перевірено в консолі на staging (рух+скейл+cover+звук, reverse).
+- **`08-video.js`** (новий): фонове Vimeo (`background:true`, через iframe в Embed, unlisted `?h=`), cover від контейнера, кнопка звуку з перемиканням іконок. Звук у background-режимі вмикається — перевірено.
+- **СТЕКІНГ секцій (ADR-010) — фаза 1 ЗАПЕЧЕНА:** секції накладаються одна на одну (absolute + z-index, рантайм), а не лінійний трек. `setupStacking`/`applyStackingPositions` + переписані `goToSection`/`goToSectionStep` у `03-sections.js`; init кличе `setupStacking`; `handleResize` спрощено. Перевірено консольним тестом (десктоп, обидва напрями). **Бандл зібрано (~36.5 KB), але ще НЕ запушено на момент паузи** — перевір `git status`.
+- `03-sections.js`: рушій кастомних таймлайнів (`registerAnimations`, `buildSectionTimeline`) поряд із reveal-кроками.
 
 **Стан верстки:** 9 зупинок розмічені `data-kulbit-section`, header — `data-kulbit-header`. Hero має реальний контент (H1, кнопки, текст, відео-блок, маска, кнопка звуку). Решта 7 секцій + footer — порожні.
 
@@ -568,7 +591,8 @@ chore: оновив build.js
 - `.hero-video-button`: `data-kulbit-sound`
 - (числа `y`/швидкості — калібруються вільно, це лише атрибути; ADR-009)
 
-**Наступний крок:** після правок у Webflow → **commit + push + purge** → перевірити живий бандл на staging. Далі — Крок 7 (header standalone) або решта секцій (Крок 6) коли буде контент.
+**Наступний крок — ФАЗА 2: таблет-hero (`768–991px`), окрема `gsap.matchMedia`-гілка.** Хореографія (узгоджена з Roman): крок 1 — `.flex-h-v-v.is-hero` весь блок вниз+згасає, header вгору, відео `scale 1.3→1`; крок 2 — **одночасно** секція 2 наповзає вгору (стекінг) **+** відео звужується до рівно **16:9** (16:9 зверху, секція 2 під ним); крок 3 — секція 2 повністю накриває відео. Атрибути з суфіксом `-tablet`. Будую поверх стекінгу (ADR-010).
+**Перед фазою 2:** запушити стекінг (фаза 1) + перевірити на staging (десктоп-hero не зламався, секції накладаються). Webflow-чек-лист атрибутів — нижче незмінний; секції в Webflow лишай `relative` + `top:0` + `height:100vh` + `overflow:hidden` (JS сам перебиває на absolute на проді).
 
 **Не забути:** `purge` jsDelivr після пушу (інакше staging/прод тримає старий бандл до 12 год).
 
@@ -627,5 +651,5 @@ chore: оновив build.js
 
 ---
 
-_Останнє оновлення цього файлу: 21 травня 2026 — додано **ADR-009** (data-driven кастомні таймлайни кроків) + Vimeo bg-відео (`08-video.js`). Hero — перша реальна кастомна анімація: рух+згасання контенту, scale відео 1.3→1, fade маски, усе одночасно, desktop-only, інтегровано в snap. Рушій таймлайнів (`registerAnimations`/`buildSectionTimeline`) у `03-sections.js` поряд із reveal-кроками. **Точка відновлення — в кінці §11** (там же — чек-лист атрибутів для Webflow). Наступне: правки атрибутів у Webflow → push/purge → перевірка; далі Крок 7 (header) або решта секцій._
+_Останнє оновлення цього файлу: 21 травня 2026 — додано **ADR-010** (стекінг секцій: накладання замість лінійного зсуву треку; absolute+z-index у рантаймі, у Webflow секції лишаються relative). Фаза 1 запечена (`setupStacking`/`applyStackingPositions` + переписані `goToSection`/`goToSectionStep`). Раніше цієї сесії: **ADR-009** (data-driven кастомні таймлайни) + Vimeo bg-відео (`08-video.js`, iframe в Embed) + hero-анімація. **Точка відновлення — в кінці §11** (там же — чек-лист Webflow). Наступне: push стекінгу → перевірка на staging → **фаза 2: таблет-hero** (`768–991`, суфікси `-tablet`, відео до 16:9 + стекінг секції 2)._
 _При значущих змінах архітектури — оновлювати розділ 10 (ADR) і розділ 11 (план)._
