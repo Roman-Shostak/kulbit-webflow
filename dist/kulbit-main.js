@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T18:51:47.506Z */
+/* Kulbit Webflow — зібрано 2026-05-21T20:27:28.401Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -966,8 +966,14 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       const svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
       svg.setAttribute('preserveAspectRatio', 'none');
+      // Оверлей має покривати BORDER-BOX, а не padding-box. Для абсолютного елемента
+      // top/left/width:100% рахуються від padding-box батька (тобто ВСЕРЕДИНІ бордера),
+      // тож зсуваємо SVG назовні на товщину бордера і задаємо явні border-box розміри
+      // (w/h = offsetWidth/offsetHeight). Інакше viewBox (border-box) рендериться у
+      // вужчий padding-box → лінія ховеру йде поряд із бордером, а не точно по ньому.
       Object.assign(svg.style, {
-        position: 'absolute', top: '0', left: '0', width: '100%', height: '100%',
+        position: 'absolute', top: `-${sw}px`, left: `-${sw}px`,
+        width: `${w}px`, height: `${h}px`,
         pointerEvents: 'none', overflow: 'visible', zIndex: '2'
       });
 
