@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T20:27:28.401Z */
+/* Kulbit Webflow — зібрано 2026-05-21T20:32:04.459Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -931,7 +931,8 @@ console.log('[Kulbit] 09-button-border.js завантажено');
   const config = {
     duration: 0.3,  // тривалість промальовки / згортання
     ease: 'none',   // лінійний easing
-    sampleN: 64     // точність пошуку точки входу на периметрі
+    sampleN: 64,    // точність пошуку точки входу на периметрі
+    offset: 2       // зсув оверлея назовні (px) з усіх боків — щоб лінія лягла точно на бордер
   };
 
   // Колір зі змінної проєкту (з фолбеком)
@@ -966,14 +967,13 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       const svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
       svg.setAttribute('preserveAspectRatio', 'none');
-      // Оверлей має покривати BORDER-BOX, а не padding-box. Для абсолютного елемента
-      // top/left/width:100% рахуються від padding-box батька (тобто ВСЕРЕДИНІ бордера),
-      // тож зсуваємо SVG назовні на товщину бордера і задаємо явні border-box розміри
-      // (w/h = offsetWidth/offsetHeight). Інакше viewBox (border-box) рендериться у
-      // вужчий padding-box → лінія ховеру йде поряд із бордером, а не точно по ньому.
+      // Оверлей як було (від padding-box, width/height:100%), але розширений назовні на
+      // config.offset px з усіх боків — щоб лінія ховеру вилізла на бордер (емпірично 2px).
+      const off = config.offset;
       Object.assign(svg.style, {
-        position: 'absolute', top: `-${sw}px`, left: `-${sw}px`,
-        width: `${w}px`, height: `${h}px`,
+        position: 'absolute',
+        top: `-${off}px`, left: `-${off}px`,
+        width: `calc(100% + ${off * 2}px)`, height: `calc(100% + ${off * 2}px)`,
         pointerEvents: 'none', overflow: 'visible', zIndex: '2'
       });
 
