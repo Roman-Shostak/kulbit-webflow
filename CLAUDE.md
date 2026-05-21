@@ -504,7 +504,7 @@ chore: оновив build.js
 - Узгоджено з ADR-007 (data-атрибути = єдиний спосіб говорити з JS) і reorder-safe принципом.
 - Reusable: будь-яка секція стає анімованою, щойно на її елементах з'являються ці атрибути — без хардкоду «секція N = анімована».
 
-**Vimeo bg-відео (супутнє, `08-video.js`):** фоновий плеєр через Vimeo SDK (`background: true`) — `<iframe>`, НЕ `<video>` (unlisted-URL має хеш у шляху `/{id}/{hash}`). Cover рахується від контейнера (тримається під scale-анімацією). Контейнер — `[data-kulbit-video]` + `data-kulbit-video-id`/`-video-hash`; кнопка звуку — `[data-kulbit-sound]` (старт muted, клік → `setMuted(false)`, перемикання іконок `.icon-24` ↔ `.icon-24.is-mute`). Скейл відео робить рушій таймлайну (ADR-009), не відео-модуль.
+**Vimeo bg-відео (супутнє, `08-video.js`):** **рішення — відео ЗАВЖДИ вставляється як `<iframe>` у Webflow Embed** (НЕ створюється JS-ом з атрибутів). Контейнер — `[data-kulbit-video]`, усередині — `<iframe>` Vimeo; у `src` обов'язково `&background=1` (autoplay+loop+muted+без UI), unlisted → `?h=<хеш>`. Модуль прикріплюється `new Vimeo.Player(iframe)` (для звуку), за потреби витягує iframe зі стандартної padding-обгортки (56.25%) у контейнер, і рахує **cover від контейнера** (тримається під scale-анімацією; обгортка `56.25%` дала б letterbox). Кнопка звуку — `[data-kulbit-sound]` у тій же секції (старт muted, клік → `setMuted(false)`, перемикання іконок `.icon-24` ↔ `.icon-24.is-mute`). Чому iframe, а не JS-створення: Roman керує відео візуально в Webflow, воно одразу в HTML, менше розмітки-конфігу. Скейл відео робить рушій таймлайну (ADR-009), не відео-модуль.
 
 ---
 
@@ -563,7 +563,7 @@ chore: оновив build.js
 **⚠️ ЩО Roman МАЄ ДОДАТИ в Webflow перед тим як пушити/тестувати бандл** (атрибути на staging; локальний експорт застарілий):
 - `data-kulbit-fade="0"` на: `header`, `.hero-text-wrapper`, `.width-590-a-a`, `.button.is-hero`, `.hero-video-mask`
 - `data-kulbit-y`: `header="-400"`, `.hero-text-wrapper="-300"`, `.width-590-a-a="300"`, `.button.is-hero="300"`
-- `.width-height-100` (embed з відео): `data-kulbit-video`, `data-kulbit-video-id="1180786664"`, `data-kulbit-video-hash="865b5a46af"`, `data-kulbit-scale="1"`, `data-kulbit-scale-from="1.3"`
+- `.width-height-100` (embed з відео): `data-kulbit-video`, `data-kulbit-scale="1"`, `data-kulbit-scale-from="1.3"`; усередині Embed — `<iframe>` Vimeo з `&background=1` у src (приклад нижче в чаті). id/hash через атрибути НЕ потрібні (вони в src iframe)
 - `.hero-video`: scale-атрибути НЕ потрібні (прибрані — відео скейлиться лише через embed)
 - `.hero-video-button`: `data-kulbit-sound`
 - (числа `y`/швидкості — калібруються вільно, це лише атрибути; ADR-009)

@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T14:50:46.940Z */
+/* Kulbit Webflow — зібрано 2026-05-21T15:05:43.702Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -510,17 +510,20 @@ console.log('[Kulbit] 07-popup-form.js завантажено');
 
 
 // ====================================================================
-// 08-video.js — Vimeo фонове відео в hero: плеєр + cover + перемикач звуку
+// 08-video.js — Vimeo фонове відео: cover + перемикач звуку
 //
-//   Розмітка (атрибути, у дусі ADR-007):
-//   • контейнер відео:  [data-kulbit-video] + data-kulbit-video-id="<число>"
-//                       + data-kulbit-video-hash="<хеш>" (для unlisted)
-//   • кнопка звуку:     [data-kulbit-sound] з іконками
-//                       .icon-24 (динамік) та .icon-24.is-mute (перекреслена)
+//   Відео ЗАВЖДИ вставляється як <iframe> у Webflow Embed (НЕ через JS).
+//   Розмітка:
+//   • контейнер: [data-kulbit-video], усередині — <iframe> Vimeo;
+//     у src ОБОВ'ЯЗКОВО &background=1 (autoplay + loop + muted + без UI),
+//     unlisted-відео → ?h=<хеш> у src.
+//   • кнопка звуку (опційно, у тій же секції): [data-kulbit-sound] з іконками
+//     .icon-24 (динамік) та .icon-24.is-mute (перекреслена).
 //
-//   Скейл відео (1.3→1) робить рушій таймлайну (03-sections.js) за атрибутами
-//   data-kulbit-scale / -scale-from на тому ж контейнері. Тут — лише плеєр+звук.
-//   Vimeo грає через <iframe>, тож порожню заглушку <video> прибираємо.
+//   Модуль прикріплюється до iframe (Vimeo SDK) для керування звуком,
+//   рахує cover від контейнера (тримається під scale-анімацією) і перемикає
+//   muted + іконки по кліку. Скейл відео (1.3→1) робить рушій таймлайну
+//   (03-sections.js, ADR-009), не цей модуль.
 // ====================================================================
 
 console.log('[Kulbit] 08-video.js завантажено');
@@ -530,7 +533,7 @@ console.log('[Kulbit] 08-video.js завантажено');
   const ASPECT = 16 / 9; // співвідношення відео (для cover-розрахунку)
 
   // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО контейнер; зайве ховає overflow:hidden.
-  //      Рахуємо від контейнера (не вьюпорта) — тримається і під час scale-анімації.
+  //      Рахуємо від контейнера (не вьюпорта) — тримається й під час scale-анімації.
   const applyCover = (box, iframe) => {
     const w = box.clientWidth, h = box.clientHeight;
     if (!w || !h) return;
@@ -555,44 +558,39 @@ console.log('[Kulbit] 08-video.js завантажено');
 
   // 03 — Ініціалізація одного відео-блоку
   const initVideo = (box) => {
-    const id = box.getAttribute('data-kulbit-video-id');
-    const hash = box.getAttribute('data-kulbit-video-hash');
-    if (!id) {
-      console.error('[Kulbit-Video] ❌ немає data-kulbit-video-id на', box);
-      return null;
-    }
-
-    // Контейнер — система координат для iframe + ховає overflow
+    // Контейнер — система координат для iframe + ховає overflow (для cover)
     box.style.position = 'relative';
     box.style.overflow = 'hidden';
 
-    // Прибираємо порожню заглушку <video> (Vimeo працює через <iframe>)
-    const stub = box.querySelector('video');
-    if (stub) stub.remove();
+    let iframe = box.querySelector('iframe');
+    if (!iframe) {
+      console.error('[Kulbit-Video] ❌ у [data-kulbit-video] немає <iframe> — встав ембед Vimeo з &background=1');
+      return null;
+    }
 
-    // unlisted-відео: хеш має бути В ШЛЯХУ URL — /{id}/{hash}
-    const url = hash ? `https://vimeo.com/${id}/${hash}` : `https://vimeo.com/${id}`;
-    const player = new Vimeo.Player(box, {
-      url,
-      background: true, // autoplay + loop + muted + без UI
-      dnt: true,        // do-not-track
-      responsive: false
-    });
+    // Якщо iframe загорнутий у стандартну padding-обгортку Vimeo (56.25%) —
+    // витягуємо його прямо в контейнер (інакше cover ламається об обгортку).
+    if (iframe.parentElement && iframe.parentElement !== box) {
+      const wrap = iframe.parentElement;
+      box.appendChild(iframe);
+      wrap.remove();
+    }
+
+    // Прикріплюємось до наявного iframe (фон-параметри — у src ембеда)
+    const player = new Vimeo.Player(iframe);
 
     player.ready().then(() => {
-      const iframe = box.querySelector('iframe');
-      if (iframe) {
-        applyCover(box, iframe);
-        // Перерахунок cover при зміні розміру контейнера (ресайз вікна)
-        new ResizeObserver(() => applyCover(box, iframe)).observe(box);
-      }
+      applyCover(box, iframe);
+      // Перерахунок cover при зміні розміру контейнера (ресайз вікна)
+      new ResizeObserver(() => applyCover(box, iframe)).observe(box);
       console.log('[Kulbit-Video] ✅ плеєр готовий (cover активний)');
     }).catch((e) => console.error('[Kulbit-Video] ❌ помилка завантаження:', e));
 
-    // Кнопка звуку — старт muted (перекреслена іконка), клік перемикає
-    const btn = document.querySelector('[data-kulbit-sound]');
+    // 04 — Кнопка звуку (шукаємо в межах секції відео; може бути відсутня)
+    const scope = box.closest('[data-kulbit-section]') || document;
+    const btn = scope.querySelector('[data-kulbit-sound]');
     if (btn) {
-      setSoundIcons(btn, true, false); // початковий стан без анімації
+      setSoundIcons(btn, true, false); // старт muted (перекреслена), без анімації
       btn.addEventListener('click', () => {
         player.getMuted().then((m) => player.setMuted(!m).then(() => {
           const muted = !m;
@@ -600,14 +598,12 @@ console.log('[Kulbit] 08-video.js завантажено');
           console.log('[Kulbit-Video] 🔊 muted →', muted);
         }));
       });
-    } else {
-      console.warn('[Kulbit-Video] кнопку [data-kulbit-sound] не знайдено');
     }
 
     return player;
   };
 
-  // 04 — Старт після готовності DOM
+  // 05 — Старт після готовності DOM
   document.addEventListener('DOMContentLoaded', () => {
     if (typeof Vimeo === 'undefined') {
       console.error('[Kulbit-Video] ❌ Vimeo Player SDK не підключено (player.js перед бандлом)');
