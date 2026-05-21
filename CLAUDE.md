@@ -605,7 +605,7 @@ chore: оновив build.js
 
 **Таймінг паузи відео (друга частина ADR):** пауза відео тепер на ЗАВЕРШЕННІ накриття (секція торкнулась верху екрана), а не на початку наповзання — див. блок «Пауза/звук» вище (`showCurrentVideo`/`hideOtherVideos`).
 
-**Реалізація:** `registerAnimations` (matchMedia) + `resetHeroState` + `teardownHero` (`03-sections.js`); `app.mm`/`app.landscapeBlocked` у стані; розділ `showCurrentVideo`/`hideOtherVideos` (`08-video.js`). ⚠️ Перевіряється ресайзом живого staging (без reload) — на момент запису ще тестується.
+**Реалізація:** `registerAnimations` (matchMedia) + `resetHeroState` + `teardownHero` (`03-sections.js`); `app.mm`/`app.landscapeBlocked` у стані; розділ `showCurrentVideo`/`hideOtherVideos` (`08-video.js`). ✅ Перевірено ресайзом на staging (desktop↔tablet↔mobile без reload) + таймінг паузи відео + попап landscape — Roman підтвердив 21.05.2026.
 
 ---
 
@@ -638,8 +638,8 @@ chore: оновив build.js
 - [x] **Крок 4:** кнопки-переходи — **завершено** (21.05.2026). `04-navigation.js`: делегований клік по `[data-target-section]` (ловить і майбутні Webflow-кнопки). Резолв цілі гнучкий: число → прямий індекс, рядок → пошук секції з `data-section-name` (іменовані якорі = reorder-safe, рекомендовано для клієнтських кнопок). `data-target-step` зчитується, але спрацює на Кроці 5. Перевірено в консолі на тимчасових тест-кнопках (номер + імʼя). Запушено.
 - [x] **Крок 5:** покрокова анімація — **механізм завершено** (21.05.2026). Конвенція: step-елемент = `[data-kulbit-step]` усередині секції (JS проставляє `data-step-index`); покроковість детектиться з розмітки. `03-sections.js`: `registerSteps`, `resetSteps`, `playStep`/`reverseStep` (дефолт — `autoAlpha` + `y`), `advance(dir)` (вирішує крок чи секція), `goToSection` зі станом кроків при вході (згори — сховані, знизу — показані). Жест (`02`) тепер кличе `advance`. **5.4 також готово:** `goToSectionStep(index, step)` + `04-navigation.js` маршрутизує `data-target-step` (значення = скільки перших кроків показати, швидке догравання `autoPlayStepDuration`). Перевірено в консолі (миша + тачпад). **Лишилось до Кроку 6:** реальні кастомні анімації замість дефолтного reveal (на реальному контенті).
 - [~] **Крок 6:** реальні кастомні анімації + масштабування на всі релевантні секції — **рушій готовий + HERO ПОВНІСТЮ ЗАВЕРШЕНА на всіх брейкпоінтах** (✅ desktop/tablet/mobile + landscape-попап + відео; перевірено на реальному телефоні 21.05.2026). Далі — решта секцій, коли з'явиться контент. Підхід: **data-driven таймлайни (ADR-009)** — анімації описуються атрибутами `data-kulbit-y/-scale/-scale-from/-fade/-order`, JS збирає GSAP-таймлайн (`registerAnimations` / `buildSectionTimeline` у `03-sections.js`). Hero desktop: header + текст їдуть вгору, H1+кнопка — вниз, усе згасає (`fade=0`), відео `scale 1.3→1`, маска згасає — одночасно, крок 0↔1; tablet/mobile — 3-кроковий `buildTabletHero` (ADR-011).
-- [ ] **Крок 7:** header — логіка зникання при скролі
-- [x] **Крок 8:** респонсив + попап для landscape mobile — **завершено** (21.05.2026, ⚠️ matchMedia ще на фінальній перевірці ресайзом на staging). ✅ Мобілка-портрет (≤479) — переюзає таблет-хореографію `buildTabletHero`. ✅ Попап «поверни пристрій» для landscape-телефону (`06-responsive.js`, ADR-004) — детект по орієнтації (`landscape` + `max-height ≤ config.landscapeMaxHeight` + `pointer: coarse`); розмітка `[data-kulbit-landscape-popup]`. ✅ **Динамічний `gsap.matchMedia`** (ADR-012) — зміна ширини/орієнтації перебудовує hero без reload (`registerAnimations`/`resetHeroState`/`teardownHero`); попап ставить `landscapeBlocked`.
+- [x] **Крок 7:** header — логіка зникання при скролі — **завершено** (21.05.2026). Header зникає в межах hero-таймлайну (desktop: `data-kulbit-y="-400"`+`fade`; tablet/mobile: `-tablet`-аналоги) — окремої standalone-логіки НЕ потрібно, Roman підтвердив що готово.
+- [x] **Крок 8:** респонсив + попап для landscape mobile — **завершено й підтверджено** (21.05.2026). ✅ Мобілка-портрет (≤479) — переюзає таблет-хореографію `buildTabletHero`. ✅ Попап «поверни пристрій» для landscape-телефону (`06-responsive.js`, ADR-004) — детект по орієнтації (`landscape` + `max-height ≤ config.landscapeMaxHeight` + `pointer: coarse`); розмітка `[data-kulbit-landscape-popup]`. ✅ **Динамічний `gsap.matchMedia`** (ADR-012) — зміна ширини/орієнтації перебудовує hero без reload (`registerAnimations`/`resetHeroState`/`teardownHero`); попап ставить `landscapeBlocked`. Перевірено ресайзом на staging.
 - [ ] **Крок 9:** попап-форма
 - [ ] **Крок 10:** фінальний поліш (easing, швидкості, дрібниці)
 - [ ] **Крок 11:** клієнтське демо
@@ -650,13 +650,15 @@ chore: оновив build.js
 - [x] **Ховер-ефект бордера кнопки** — **завершено** (21.05.2026, `09-button-border.js`). На елементах з атрибутом `data-kulbit-border` синій бордер (`--colors--blue`) промальовується від точки курсора в обидва боки (SVG-обведення + анімований `stroke-dasharray`, товщина = товщині бордера), при відведенні стягується до точки виходу. Матова лінія + проявлення `opacity`, лінійний easing, 0.3с. Підтримка ресайзу й кількох елементів. **Дія Romana у Webflow:** додати кнопці custom attribute `data-kulbit-border`.
 - [x] **Vimeo bg-відео в hero** — **завершено** (`08-video.js`). Фоновий плеєр Vimeo SDK (`background: true` → autoplay+loop+muted, без UI), через `<iframe>` (unlisted-URL `/{id}/{hash}`). Cover рахується від контейнера (тримається під scale-анімацією). Звук вмикається у background-режимі по кліку — перевірено. Конвенція: контейнер `[data-kulbit-video]` + `data-kulbit-video-id`/`-video-hash`; кнопка `[data-kulbit-sound]` (старт muted = перекреслена іконка, клік → динамік). Скейл відео (1.3→1) робить рушій таймлайну (ADR-009), не відео-модуль. Деталі — [[vimeo-video-requirement]].
 
-### 🔖 Точка відновлення (сесія 21.05.2026 — hero + відео + стекінг + таблет + мобілка + попап landscape)
+### 🔖 Точка відновлення (КІНЕЦЬ сесії 21.05.2026 — hero ПОВНІСТЮ готовий, Кроки 1-8 закриті)
+
+**📌 TL;DR для наступної сесії:** Hero-секція повністю завершена й підтверджена на всіх девайсах. **Кроки 1-8 + Крок 7 закриті.** Лишився **Крок 6** — анімації решти 7 секцій + footer, але вони ЗАБЛОКОВАНІ контентом: Roman зараз верстає ці секції у Webflow. Коли зʼявиться розмітка/контент — навішуємо на елементи `data-kulbit-*` атрибути (ADR-009) або reveal-кроки `[data-kulbit-step]`, рушій уже готовий. Усе запушено (`05adb4e`), бандл ~51.6 KB, робоче дерево чисте.
 
 **Підтверджено на старті сесії:** запечена (бандл) версія таблета на staging — **працює** (десктоп + таблет: hero, стекінг, передача на секцію 2, відмотування, пауза/звук). Питання з минулої точки закрите.
 
 **Мобілка-портрет (≤479) — ЗРОБЛЕНО + ЗАПЕЧЕНО (Крок 8, частина):** анімація на мобілці **точно така ж, як на таблеті** → переюзали `buildTabletHero`/`tabletHeroStep` як є; у диспетчер `registerAnimations` додано гілку `≤479 → buildTabletHero` (читає ті самі `-tablet` атрибути, геометрія адаптується динамічно). Нових `-mobile` атрибутів немає. Перевірено консольним тестом на ≤479 (3 кроки + відмотування + пауза/звук) — Roman підтвердив. Деталі — ADR-011.
 
-**Попап landscape (Крок 8, частина) — ЗРОБЛЕНО + ЗАПЕЧЕНО:** `06-responsive.js` (ADR-004). Детект по орієнтації (`landscape` + `max-height ≤ config.landscapeMaxHeight=500` + `pointer: coarse`) → попап + Observer.disable + пауза відео; назад → попап off + Observer.enable + добудова hero за потреби. Розмітка: `[data-kulbit-landscape-popup]` (Display:None дефолт, fixed overlay) — Roman додав. Перевірено в device-toolbar (поворот). **Лишилось у Кроці 8:** динамічний `gsap.matchMedia` (зараз зміна ширини desktop↔tablet потребує reload).
+**Попап landscape (Крок 8, частина) — ЗРОБЛЕНО + ЗАПЕЧЕНО:** `06-responsive.js` (ADR-004). Детект по орієнтації (`landscape` + `max-height ≤ config.landscapeMaxHeight=500` + `pointer: coarse`) → попап + Observer.disable + пауза відео; назад → попап off + Observer.enable + добудова hero за потреби. Розмітка: `[data-kulbit-landscape-popup]` (Display:None дефолт, fixed overlay) — Roman додав. Перевірено в device-toolbar (поворот).
 
 **Зроблено раніше цієї сесії:**
 
@@ -666,7 +668,7 @@ chore: оновив build.js
 - **ТАБЛЕТ-hero (ADR-011) ЗАПЕЧЕНО:** брейкпоінт-диспетчер (`registerAnimations` → desktop/tablet/<768 за `innerWidth`), `buildTabletHero` (3 кроки: контент+відео scale → 16:9+секція2+кнопка → накриття), `tabletHeroStep` (межа hero↔секція1 + повне відмотування назад). Пауза/мут відео по видимості — `updateVideoVisibility` в `08-video.js` (загальне, і десктоп). Перевірено real-scroll консольним тестом. Бандл ~42.5 KB.
 - `03-sections.js`: рушій кастомних таймлайнів (`buildDesktopAnimations`, `buildSectionTimeline`) поряд із reveal-кроками.
 
-**Стан верстки:** 9 зупинок розмічені `data-kulbit-section`, header — `data-kulbit-header`. Hero має реальний контент (H1, кнопки, текст, відео-блок, маска, кнопка звуку). Решта 7 секцій + footer — порожні.
+**Стан верстки:** 9 зупинок розмічені `data-kulbit-section`, header — `data-kulbit-header`. Hero має реальний контент (H1, кнопки, текст, відео-блок, маска, кнопка звуку) — **повністю готова**. Решта 7 секцій + footer — Roman **зараз верстає** (на кінець сесії 21.05.2026).
 
 **Атрибути hero у Webflow** — Roman їх **уже додав** на staging під час тестів цієї сесії. Повна мапа (для довідки/відновлення) — у **§15**. Vimeo-iframe для Embed — теж у §15 (ID `1180786664`, hash `865b5a46af`).
 
@@ -674,13 +676,15 @@ chore: оновив build.js
 
 **🎉 HERO-СЕКЦІЯ ПОВНІСТЮ ГОТОВА (21.05.2026):** desktop (≥992, ADR-009) + tablet (768-991) + mobile-портрет (≤479) hero-хореографія + landscape-попап (480-767/орієнтація) + Vimeo bg-відео (cover, звук, пауза по видимості) + стекінг — усе перевірено й підтверджено Romanом на staging (вкл. реальний телефон). Це перша повністю завершена секція сайту.
 
-**Динамічний matchMedia + таймінг паузи відео (21.05.2026, коміт `05adb4e`, ⚠️ на фінальній перевірці):** (5) **`gsap.matchMedia`** (ADR-012) — hero перебудовується при зміні ширини/орієнтації **без reload** (`registerAnimations`/`resetHeroState`/`teardownHero`); попап ставить `landscapeBlocked`, ручну добудову hero прибрано. (6) **таймінг паузи відео** — пауза на завершенні накриття (секція торкнулась верху), а не на початку наповзання (`showCurrentVideo`/`hideOtherVideos`). ⚠️ **Перевірити на staging ресайзом** (desktop↔tablet↔mobile без reload) + відео-паузу на десктопі + попап landscape. Відкат за потреби — `@5594e8e`.
+**Динамічний matchMedia + таймінг паузи відео (21.05.2026, коміт `05adb4e`, ✅ підтверджено ресайзом на staging):** (5) **`gsap.matchMedia`** (ADR-012) — hero перебудовується при зміні ширини/орієнтації **без reload** (`registerAnimations`/`resetHeroState`/`teardownHero`); попап ставить `landscapeBlocked`, ручну добудову hero прибрано. На зміні брейкпоінта повертаємось на hero (свідомий trade-off — Roman ОК). (6) **таймінг паузи відео** — пауза на завершенні накриття (секція торкнулась верху), а не на початку наповзання (`showCurrentVideo`/`hideOtherVideos`).
+
+**Крок 7 (header) — ЗАКРИТО:** header зникає в межах hero-таймлайну (`data-kulbit-y`/`fade` + `-tablet`-аналоги) — окремої логіки не треба, Roman підтвердив.
 
 **Стан деплою:** усе **ЗАПУШЕНО на `origin/main`, останній коміт `05adb4e`**. Бандл ~51.6 KB.
 
-**Далі за планом:** **Крок 8 — залишок** (динамічний `gsap.matchMedia` замість одноразового брейкпоінта — зараз зміна ширини desktop↔tablet потребує reload), **Крок 7** (header standalone — зараз header рухається лише в hero-таймлайні) або **Крок 6** (анімації решти секцій, коли зʼявиться контент).
+**Далі за планом:** **Крок 6** — кастомні анімації решти 7 секцій + footer, КОЛИ Roman зверстає їх у Webflow (зараз цим і займається). Рушій готовий: на елементи навішуються `data-kulbit-y/-scale/-scale-from/-fade/-order` (+ `-tablet` для таблета/мобілки) → `buildSectionTimeline`/`buildTabletHero` зберуть таймлайн; або reveal-кроки `[data-kulbit-step]`. Потім — Крок 9 (попап-форма), Крок 10 (поліш), Крок 11 (демо).
 
-**Webflow-нагадування:** секції лишай `relative` + `top:0` + `height:100vh` + `overflow:hidden` (JS перебиває на absolute на проді). Бандл визначає брейкпоінт при завантаженні — для тесту таблета звужуй вікно і РОБИ RELOAD.
+**Webflow-нагадування:** секції лишай `relative` + `top:0` + `height:100vh` + `overflow:hidden` (JS перебиває на absolute на проді). Брейкпоінт тепер ДИНАМІЧНИЙ (`gsap.matchMedia`, ADR-012) — reload для зміни ширини більше НЕ потрібен.
 
 **Не забути:** після пушу — `purge` jsDelivr (а реально для тесту — commit-pinned URL, бо `@main` лагає до 12 год).
 
@@ -822,5 +826,5 @@ ID `1180786664`, hash `865b5a46af`. Встав **лише iframe** (без paddi
 
 ---
 
-_Останнє оновлення цього файлу: 21 травня 2026 — **попап landscape (`06-responsive.js`, ADR-004)**: детект по орієнтації (`landscape` + `max-height ≤ config.landscapeMaxHeight=500` + `pointer: coarse`), на landscape — попап + Observer off + пауза відео; розмітка `[data-kulbit-landscape-popup]`. Оновлено **ADR-004** (блок реалізації), §5-config, §11-план (Крок 8 майже завершено). Раніше цієї сесії: **мобільний hero (≤479)** переюзає `buildTabletHero` (ADR-011), **ADR-009** (data-driven таймлайни), **ADR-010** (стекінг секцій), Vimeo bg-відео, desktop+tablet hero. **Точка відновлення — в кінці §11**. Останній коміт: `05adb4e` (динамічний gsap.matchMedia ADR-012 + таймінг паузи відео; ⚠️ на фінальній перевірці ресайзом). Наступне: підтвердити matchMedia на staging → Крок 7 (header) / Крок 6 (решта секцій, коли зʼявиться контент)._
+_Останнє оновлення цього файлу: 21 травня 2026 (кінець сесії) — **Крок 8 + Крок 7 ЗАКРИТО, hero повністю готовий**. Цієї сесії: мобільний hero ≤479 (ADR-011), попап landscape по орієнтації (ADR-004), фікси (інверсія скролу на тачі ADR-008, клас іконок, рендер-висота замість innerHeight, центр кнопки), **динамічний `gsap.matchMedia` + таймінг паузи відео при накритті (ADR-012)** — усе перевірено на staging (вкл. реальний телефон) і підтверджено Romanом. Крок 7 (header) закрито — зникає в hero-таймлайні, окремої логіки не треба. **Точка відновлення — в кінці §11** (там TL;DR). Останній коміт: `05adb4e`. Наступне: **Крок 6** — анімації решти 7 секцій + footer, коли Roman зверстає їх (зараз цим займається); рушій готовий._
 _При значущих змінах архітектури — оновлювати розділ 10 (ADR) і розділ 11 (план)._
