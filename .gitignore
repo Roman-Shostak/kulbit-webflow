@@ -17,3 +17,5 @@ npm-debug.log
 # Тимчасові
 tmp/
 .cache/
+
+kulbit-gsap.webflow
