@@ -173,7 +173,8 @@ window.KulbitApp = {
     autoPlayStepDuration: 0.3, // швидке догравання при кліку на кнопку (Крок 4)
     ease: 'power2.inOut',      // easing переходів
     accelRatio: 1.4,           // поріг прискорення для детекції нового фліка (анти-інерція тачпада)
-    minVelocity: 60            // нижче цієї швидкості — «дотихання» інерції, ігноруємо
+    minVelocity: 60,           // нижче цієї швидкості — «дотихання» інерції, ігноруємо
+    landscapeMaxHeight: 500    // ≤ цієї висоти в landscape = телефон → попап «поверни» (ADR-004)
   },
 
   // Методи (02-app-core.js та 03-sections.js)
@@ -469,6 +470,14 @@ chore: оновив build.js
 - Адаптація під landscape mobile = подвоєння роботи над контентом
 - Аудиторія B2B-лендингу частіше в portrait
 
+**Реалізація (`06-responsive.js`, запечено 21.05.2026):** детект **по орієнтації, а не лише ширині** — `matchMedia('(orientation: landscape) and (max-height: <config.landscapeMaxHeight=500>px) and (pointer: coarse)')`. Три умови разом: `landscape` (горизонтально) + низька висота (≤500 = телефон; планшет у landscape має 768+) + `pointer: coarse` (тач-девайс, тож десктоп із коротким вікном НЕ ловить попап). Так попап спрацьовує на **будь-якому телефоні в landscape незалежно від ширини** (вирішує проблему широких телефонів ~932px, що по ширині падали б у «таблет»).
+
+- **Розмітка:** обгортка попапа — `[data-kulbit-landscape-popup]`, у Webflow `Display: None` за замовчуванням (показ керує JS, без блимання), fixed overlay.
+- **На landscape:** попап `display:flex` + `app.observer.disable()` (fullpage off) + пауза/мут усіх відео (`rec.hide()`).
+- **Назад у портрет:** попап `display:none` + `app.observer.enable()` + `updateVideoVisibility()`. Якщо сторінку **відкрили одразу в landscape** (hero тоді не побудувався, бо брейкпоінт визначається при init) — на повернення в портрет добудовуємо hero (`registerAnimations()`, з guard `!isTabletHero && !isAnimated`).
+- Початковий `apply()` — через `setTimeout(…, 0)`, щоб `08-video.js` встиг заповнити `app.videos`.
+- Перевірено в DevTools (device-toolbar + телефон, поворот landscape↔portrait).
+
 ### ADR-005: GitHub + jsDelivr для зберігання коду
 
 **Рішення:** код у GitHub-репо `kulbit-webflow`, доставка через jsDelivr CDN.
@@ -607,7 +616,7 @@ chore: оновив build.js
 - [x] **Крок 5:** покрокова анімація — **механізм завершено** (21.05.2026). Конвенція: step-елемент = `[data-kulbit-step]` усередині секції (JS проставляє `data-step-index`); покроковість детектиться з розмітки. `03-sections.js`: `registerSteps`, `resetSteps`, `playStep`/`reverseStep` (дефолт — `autoAlpha` + `y`), `advance(dir)` (вирішує крок чи секція), `goToSection` зі станом кроків при вході (згори — сховані, знизу — показані). Жест (`02`) тепер кличе `advance`. **5.4 також готово:** `goToSectionStep(index, step)` + `04-navigation.js` маршрутизує `data-target-step` (значення = скільки перших кроків показати, швидке догравання `autoPlayStepDuration`). Перевірено в консолі (миша + тачпад). **Лишилось до Кроку 6:** реальні кастомні анімації замість дефолтного reveal (на реальному контенті).
 - [~] **Крок 6:** реальні кастомні анімації + масштабування на всі релевантні секції — **рушій готовий + перша секція (hero) зроблена** (далі — решта секцій). Підхід: **data-driven таймлайни (ADR-009)** — анімації описуються атрибутами `data-kulbit-y/-scale/-scale-from/-fade/-order`, JS збирає GSAP-таймлайн (`registerAnimations` / `buildSectionTimeline` у `03-sections.js`). Hero: header + текст їдуть вгору, H1+кнопка — вниз, усе згасає (`fade=0`), відео `scale 1.3→1`, маска згасає — усе одночасно, тільки desktop. Інтегровано в snap (один жест = крок 0↔1). Інше — на наступних секціях, коли з'явиться контент.
 - [ ] **Крок 7:** header — логіка зникання при скролі
-- [~] **Крок 8:** респонсив + попап для landscape mobile — **мобілка-портрет (≤479) ЗРОБЛЕНА** (переюзає таблет-хореографію `buildTabletHero`, та сама анімація й `-tablet` атрибути; одна гілка в диспетчері `registerAnimations`; перевірено на ≤479 + запечено). **Лишилось:** попап «поверни екран» для landscape (480-767 / орієнтація) + динамічний `gsap.matchMedia` замість одноразового брейкпоінта (зараз зміна ширини потребує reload).
+- [~] **Крок 8:** респонсив + попап для landscape mobile — **майже завершено**. ✅ Мобілка-портрет (≤479) — переюзає таблет-хореографію `buildTabletHero` (та сама анімація й `-tablet` атрибути; одна гілка в `registerAnimations`). ✅ Попап «поверни пристрій» для landscape-телефону (`06-responsive.js`, ADR-004) — детект по орієнтації (`landscape` + `max-height ≤ config.landscapeMaxHeight` + `pointer: coarse`), на landscape: попап + Observer off + пауза відео; назад: попап off + Observer on + добудова hero за потреби. Розмітка: `[data-kulbit-landscape-popup]` (Display:None за дефолтом). **Лишилось:** динамічний `gsap.matchMedia` замість одноразового брейкпоінта (зараз зміна ширини desktop↔tablet потребує reload).
 - [ ] **Крок 9:** попап-форма
 - [ ] **Крок 10:** фінальний поліш (easing, швидкості, дрібниці)
 - [ ] **Крок 11:** клієнтське демо
