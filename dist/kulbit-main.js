@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T07:19:20.325Z */
+/* Kulbit Webflow — зібрано 2026-05-21T08:24:09.681Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -283,6 +283,41 @@ console.log('[Kulbit] 03-sections.js завантажено');
     // Кроків у цьому напрямі немає (або секція не покрокова) → міняємо секцію
     app.goToSection(app.currentSectionIndex + dir, false, dir);
   };
+
+  // 08 — Перехід на секцію + конкретний крок (для кнопок data-target-step).
+  //      targetStep = скільки перших кроків показати; решта сховані. Швидке догравання.
+  app.goToSectionStep = (index, targetStep) => {
+    if (!app.sections.length || !app.content) return;
+
+    const clamped = Math.max(0, Math.min(index, app.sections.length - 1));
+    const section = app.sections[clamped];
+    const maxStep = section.isStepped ? section.steps.length : 0;
+    const step = Math.max(0, Math.min(targetStep || 0, maxStep));
+
+    app.currentSectionIndex = clamped;
+    app.currentStep = step;
+
+    // Перехід на секцію (анімація треку)
+    app.isAnimating = true;
+    gsap.to(app.content, {
+      y: -section.el.offsetTop,
+      duration: app.config.scrollDuration,
+      ease: app.config.ease,
+      onComplete: () => { app.isAnimating = false; }
+    });
+
+    // Стан кроків: перші `step` швидко показуємо, решту ховаємо
+    if (section.isStepped) {
+      section.steps.forEach((el, i) => {
+        if (i < step) {
+          gsap.to(el, { autoAlpha: 1, y: 0, duration: app.config.autoPlayStepDuration, ease: app.config.ease });
+        } else {
+          gsap.set(el, { autoAlpha: 0, y: 40 });
+        }
+      });
+    }
+    console.log('[Kulbit-Nav] → секція', clamped, 'крок', step);
+  };
 })();
 
 
@@ -319,14 +354,15 @@ console.log('[Kulbit] 04-navigation.js завантажено');
       return;
     }
 
-    // data-target-step буде підтримано на Кроці 5 (покрокові анімації)
-    const step = trigger.getAttribute('data-target-step');
-    if (step !== null) {
-      console.log('[Kulbit-Nav] data-target-step =', step, '— крокова навігація буде на Кроці 5');
+    // Якщо вказано data-target-step — перехід на секцію + конкретний крок
+    const stepAttr = trigger.getAttribute('data-target-step');
+    if (stepAttr !== null) {
+      console.log('[Kulbit-Nav] клік → секція', index, 'крок', stepAttr);
+      app.goToSectionStep(index, parseInt(stepAttr, 10));
+    } else {
+      console.log('[Kulbit-Nav] клік → секція', index);
+      app.goToSection(index);
     }
-
-    console.log('[Kulbit-Nav] клік → секція', index);
-    app.goToSection(index);
   };
 
   document.addEventListener('click', onClick);

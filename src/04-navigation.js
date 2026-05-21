@@ -31,14 +31,15 @@ console.log('[Kulbit] 04-navigation.js завантажено');
       return;
     }
 
-    // data-target-step буде підтримано на Кроці 5 (покрокові анімації)
-    const step = trigger.getAttribute('data-target-step');
-    if (step !== null) {
-      console.log('[Kulbit-Nav] data-target-step =', step, '— крокова навігація буде на Кроці 5');
+    // Якщо вказано data-target-step — перехід на секцію + конкретний крок
+    const stepAttr = trigger.getAttribute('data-target-step');
+    if (stepAttr !== null) {
+      console.log('[Kulbit-Nav] клік → секція', index, 'крок', stepAttr);
+      app.goToSectionStep(index, parseInt(stepAttr, 10));
+    } else {
+      console.log('[Kulbit-Nav] клік → секція', index);
+      app.goToSection(index);
     }
-
-    console.log('[Kulbit-Nav] клік → секція', index);
-    app.goToSection(index);
   };
 
   document.addEventListener('click', onClick);
