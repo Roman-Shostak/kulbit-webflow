@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T10:30:40.323Z */
+/* Kulbit Webflow — зібрано 2026-05-21T14:50:46.940Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -137,8 +137,9 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     }
 
     if (!app.lockViewport()) return;
-    app.registerSections(); // визначено у 03-sections.js
-    app.registerSteps();    // визначено у 03-sections.js (детектить кроки з розмітки)
+    app.registerSections();   // визначено у 03-sections.js
+    app.registerSteps();      // reveal-кроки [data-kulbit-step]
+    app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
     app.setupObserver();
     window.addEventListener('resize', app.handleResize);
     console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');
@@ -151,21 +152,38 @@ console.log('[Kulbit] 02-app-core.js завантажено');
 // ====================================================================
 // 03-sections.js — Секції + кроки: реєстрація з DOM, переходи, покрокові анімації
 //                  (методи додаються до KulbitApp з 02-app-core.js)
+//
+//   Два типи покрокових секцій (детектяться з розмітки):
+//   • reveal-кроки  — елементи [data-kulbit-step] (дефолтний показ autoAlpha+y)
+//   • кастомний таймлайн — елементи з [data-kulbit-y] / [data-kulbit-scale] /
+//     [data-kulbit-fade] складаються в один GSAP-таймлайн (ADR-009).
 // ====================================================================
 
 console.log('[Kulbit] 03-sections.js завантажено');
 
-// ## — Методи роботи з секціями та кроками
+// ## — Методи роботи з секціями, кроками та кастомними таймлайнами
 (() => {
   window.KulbitApp = window.KulbitApp || {};
   const app = window.KulbitApp;
+
+  // Селектор анімованих елементів кастомного таймлайну
+  const ANIM_SELECTOR = '[data-kulbit-y],[data-kulbit-scale],[data-kulbit-fade]';
+  const num = (el, attr, fallback) => {
+    const v = parseFloat(el.getAttribute(attr));
+    return Number.isNaN(v) ? fallback : v;
+  };
 
   // 01 — Реєстрація секцій з DOM. Індекс проставляє JS з DOM-порядку (reorder-safe).
   app.registerSections = () => {
     const els = document.querySelectorAll('[data-kulbit-section]');
     app.sections = Array.from(els).map((el, index) => {
       el.setAttribute('data-section-index', index);
-      return { el, index, isFooter: el.classList.contains('footer'), steps: [], isStepped: false };
+      return {
+        el, index,
+        isFooter: el.classList.contains('footer'),
+        steps: [], isStepped: false,   // reveal-кроки
+        timeline: null, isAnimated: false // кастомний таймлайн (ADR-009)
+      };
     });
 
     if (!app.sections.length) {
@@ -175,7 +193,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-Sections] зареєстровано секцій:', app.sections.length);
   };
 
-  // 02 — Реєстрація кроків: для кожної секції збираємо [data-kulbit-step] у DOM-порядку.
+  // 02 — Реєстрація reveal-кроків: для кожної секції збираємо [data-kulbit-step] у DOM-порядку.
   //      Покроковість детектиться З РОЗМІТКИ, не зі списку в JS.
   app.registerSteps = () => {
     app.sections.forEach((s) => {
@@ -185,13 +203,82 @@ console.log('[Kulbit] 03-sections.js завантажено');
       s.isStepped = s.steps.length > 0;
       if (s.isStepped) {
         app.resetSteps(s, false); // на старті всі кроки сховані
-        console.log(`[Kulbit-Steps] секція ${s.index}: покрокова, кроків: ${s.steps.length}`);
+        console.log(`[Kulbit-Steps] секція ${s.index}: reveal-кроки, кроків: ${s.steps.length}`);
       }
     });
   };
 
-  // 03 — Стан кроків секції: shown=false → усі сховані; true → усі показані.
-  //      Дефолтна анімація — autoAlpha + зсув по y (реальні кастомні замінять на Кроці 6).
+  // 03 — Реєстрація кастомних таймлайнів (ADR-009).
+  //      Тільки desktop (≥992px) — на таблеті/мобілці інший hero (Крок 8).
+  //      Елементи прив'язуємо до секції через closest; ті, що поза секціями
+  //      (напр. header), йдуть до hero — секції 0.
+  app.registerAnimations = () => {
+    if (!window.matchMedia('(min-width: 992px)').matches) {
+      console.log('[Kulbit-Anim] не desktop — кастомні таймлайни секцій вимкнено');
+      return;
+    }
+
+    const animEls = document.querySelectorAll(ANIM_SELECTOR);
+    if (!animEls.length) return;
+
+    const bySection = new Map(); // індекс секції → масив елементів
+    animEls.forEach((el) => {
+      const sectionEl = el.closest('[data-kulbit-section]');
+      const idx = sectionEl ? parseInt(sectionEl.getAttribute('data-section-index'), 10) : 0;
+      if (!bySection.has(idx)) bySection.set(idx, []);
+      bySection.get(idx).push(el);
+    });
+
+    bySection.forEach((els, idx) => {
+      const section = app.sections[idx];
+      if (!section) return;
+      section.timeline = app.buildSectionTimeline(els);
+      section.isAnimated = true;
+      console.log(`[Kulbit-Anim] секція ${idx}: кастомний таймлайн, елементів: ${els.length}`);
+    });
+  };
+
+  // 04 — Побудова паузованого таймлайну секції з атрибутів.
+  //      Початковий стан (крок 0) виставляється gsap.set; крок 1 — це кінець таймлайну.
+  //      Фази задаються data-kulbit-order (0 — перша, далі — послідовно). Без order — усе разом.
+  app.buildSectionTimeline = (els) => {
+    // Початковий стан (крок 0)
+    els.forEach((el) => {
+      const start = {};
+      if (el.hasAttribute('data-kulbit-y')) start.yPercent = 0;
+      if (el.hasAttribute('data-kulbit-scale')) {
+        start.scale = num(el, 'data-kulbit-scale-from', 1);
+        start.transformOrigin = '50% 50%';
+      }
+      if (el.hasAttribute('data-kulbit-fade')) start.autoAlpha = 1;
+      gsap.set(el, start);
+    });
+
+    const orderOf = (el) => parseInt(el.getAttribute('data-kulbit-order') || '0', 10);
+    const orders = [...new Set(Array.from(els, orderOf))].sort((a, b) => a - b);
+
+    const tl = gsap.timeline({
+      paused: true,
+      defaults: { duration: app.config.stepDuration, ease: app.config.ease },
+      onComplete: () => { app.isAnimating = false; },
+      onReverseComplete: () => { app.isAnimating = false; }
+    });
+
+    // Фази по черзі ('>' — після попередньої); всередині фази — одночасно ('<')
+    orders.forEach((ord, gi) => {
+      els.filter((el) => orderOf(el) === ord).forEach((el, i) => {
+        const to = {};
+        if (el.hasAttribute('data-kulbit-y')) to.yPercent = num(el, 'data-kulbit-y', 0);
+        if (el.hasAttribute('data-kulbit-scale')) to.scale = num(el, 'data-kulbit-scale', 1);
+        if (el.hasAttribute('data-kulbit-fade')) to.autoAlpha = num(el, 'data-kulbit-fade', 0);
+        tl.to(el, to, i === 0 ? (gi === 0 ? 0 : '>') : '<');
+      });
+    });
+
+    return tl;
+  };
+
+  // 05 — Стан reveal-кроків секції: shown=false → усі сховані; true → усі показані.
   app.resetSteps = (section, shown) => {
     if (!section.isStepped) return;
     section.steps.forEach((el) => {
@@ -199,7 +286,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     });
   };
 
-  // 04 — Програти крок i (reveal)
+  // 06 — Програти reveal-крок i
   app.playStep = (section, i) => {
     const el = section.steps[i];
     if (!el) return;
@@ -212,7 +299,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-Steps] ▶ крок', i, '(секція', section.index + ')');
   };
 
-  // 05 — Відмотати крок i (сховати)
+  // 07 — Відмотати reveal-крок i (сховати)
   app.reverseStep = (section, i) => {
     const el = section.steps[i];
     if (!el) return;
@@ -225,8 +312,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-Steps] ◀ крок', i, '(секція', section.index + ')');
   };
 
-  // 06 — Перехід на секцію. dir задає стан кроків нової секції:
-  //      вхід згори (dir>0) → кроки сховані; знизу (dir<0) → усі показані (щоб відмотувати).
+  // 08 — Перехід на секцію. dir задає стан кроків нової секції:
+  //      вхід згори (dir>0) → кроки/таймлайн на початку; знизу (dir<0) → у кінці (щоб відмотувати).
   app.goToSection = (index, instant, dir) => {
     if (!app.sections.length || !app.content) return;
 
@@ -238,7 +325,11 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.currentSectionIndex = clamped;
 
     // Стан кроків нової секції
-    if (section.isStepped) {
+    if (section.isAnimated && section.timeline) {
+      const atEnd = dir < 0;                       // вхід знизу → таймлайн у кінці
+      section.timeline.progress(atEnd ? 1 : 0).pause();
+      app.currentStep = atEnd ? 1 : 0;
+    } else if (section.isStepped) {
       const shown = dir < 0;
       app.resetSteps(section, shown);
       app.currentStep = shown ? section.steps.length : 0;
@@ -262,11 +353,30 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-Nav] секція →', clamped);
   };
 
-  // 07 — advance: вирішує — наступний КРОК у поточній секції чи перехід на СЕКЦІЮ.
+  // 09 — advance: вирішує — наступний КРОК у поточній секції чи перехід на СЕКЦІЮ.
   //      Викликається обробником жесту (02-app-core.js) та кнопками.
   app.advance = (dir) => {
     const section = app.sections[app.currentSectionIndex];
 
+    // Кастомний таймлайн (hero): крок 0 ↔ 1
+    if (section.isAnimated && section.timeline) {
+      if (dir > 0 && app.currentStep < 1) {
+        app.isAnimating = true;
+        app.currentStep = 1;
+        section.timeline.play();
+        console.log('[Kulbit-Anim] ▶ таймлайн секції', section.index);
+        return;
+      }
+      if (dir < 0 && app.currentStep > 0) {
+        app.isAnimating = true;
+        app.currentStep = 0;
+        section.timeline.reverse();
+        console.log('[Kulbit-Anim] ◀ reverse секції', section.index);
+        return;
+      }
+    }
+
+    // Reveal-кроки
     if (section.isStepped) {
       if (dir > 0 && app.currentStep < section.steps.length) {
         app.playStep(section, app.currentStep);
@@ -280,18 +390,18 @@ console.log('[Kulbit] 03-sections.js завантажено');
       }
     }
 
-    // Кроків у цьому напрямі немає (або секція не покрокова) → міняємо секцію
+    // Кроків у цьому напрямі немає → міняємо секцію
     app.goToSection(app.currentSectionIndex + dir, false, dir);
   };
 
-  // 08 — Перехід на секцію + конкретний крок (для кнопок data-target-step).
-  //      targetStep = скільки перших кроків показати; решта сховані. Швидке догравання.
+  // 10 — Перехід на секцію + конкретний крок (для кнопок data-target-step).
+  //      Кастомний таймлайн: крок ≥1 → кінець, інакше початок. Reveal: показати перші `step`.
   app.goToSectionStep = (index, targetStep) => {
     if (!app.sections.length || !app.content) return;
 
     const clamped = Math.max(0, Math.min(index, app.sections.length - 1));
     const section = app.sections[clamped];
-    const maxStep = section.isStepped ? section.steps.length : 0;
+    const maxStep = section.isAnimated ? 1 : (section.isStepped ? section.steps.length : 0);
     const step = Math.max(0, Math.min(targetStep || 0, maxStep));
 
     app.currentSectionIndex = clamped;
@@ -306,8 +416,10 @@ console.log('[Kulbit] 03-sections.js завантажено');
       onComplete: () => { app.isAnimating = false; }
     });
 
-    // Стан кроків: перші `step` швидко показуємо, решту ховаємо
-    if (section.isStepped) {
+    // Стан кроків
+    if (section.isAnimated && section.timeline) {
+      section.timeline.progress(step >= 1 ? 1 : 0).pause();
+    } else if (section.isStepped) {
       section.steps.forEach((el, i) => {
         if (i < step) {
           gsap.to(el, { autoAlpha: 1, y: 0, duration: app.config.autoPlayStepDuration, ease: app.config.ease });
@@ -395,6 +507,125 @@ console.log('[Kulbit] 06-responsive.js завантажено');
 console.log('[Kulbit] 07-popup-form.js завантажено');
 
 // Тут буде попап-форма (Крок 9)
+
+
+// ====================================================================
+// 08-video.js — Vimeo фонове відео в hero: плеєр + cover + перемикач звуку
+//
+//   Розмітка (атрибути, у дусі ADR-007):
+//   • контейнер відео:  [data-kulbit-video] + data-kulbit-video-id="<число>"
+//                       + data-kulbit-video-hash="<хеш>" (для unlisted)
+//   • кнопка звуку:     [data-kulbit-sound] з іконками
+//                       .icon-24 (динамік) та .icon-24.is-mute (перекреслена)
+//
+//   Скейл відео (1.3→1) робить рушій таймлайну (03-sections.js) за атрибутами
+//   data-kulbit-scale / -scale-from на тому ж контейнері. Тут — лише плеєр+звук.
+//   Vimeo грає через <iframe>, тож порожню заглушку <video> прибираємо.
+// ====================================================================
+
+console.log('[Kulbit] 08-video.js завантажено');
+
+// ## — Фонове Vimeo-відео
+(() => {
+  const ASPECT = 16 / 9; // співвідношення відео (для cover-розрахунку)
+
+  // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО контейнер; зайве ховає overflow:hidden.
+  //      Рахуємо від контейнера (не вьюпорта) — тримається і під час scale-анімації.
+  const applyCover = (box, iframe) => {
+    const w = box.clientWidth, h = box.clientHeight;
+    if (!w || !h) return;
+    let iw, ih;
+    if (w / h > ASPECT) { iw = w; ih = w / ASPECT; } // ширший за 16:9 → тягнемо по ширині
+    else                { ih = h; iw = h * ASPECT; } // вищий/вужчий → тягнемо по висоті
+    Object.assign(iframe.style, {
+      position: 'absolute', top: '50%', left: '50%',
+      transform: 'translate(-50%, -50%)',
+      width: iw + 'px', height: ih + 'px', maxWidth: 'none'
+    });
+  };
+
+  // 02 — Стан іконок: muted → перекреслена (.is-mute); звук → динамік (.icon-24)
+  const setSoundIcons = (btn, muted, animate) => {
+    const iSound = btn.querySelector('.icon-24:not(.is-mute)');
+    const iMute = btn.querySelector('.icon-24.is-mute');
+    const dur = animate ? 0.2 : 0;
+    if (iSound) gsap.to(iSound, { autoAlpha: muted ? 0 : 1, duration: dur });
+    if (iMute) gsap.to(iMute, { autoAlpha: muted ? 1 : 0, duration: dur });
+  };
+
+  // 03 — Ініціалізація одного відео-блоку
+  const initVideo = (box) => {
+    const id = box.getAttribute('data-kulbit-video-id');
+    const hash = box.getAttribute('data-kulbit-video-hash');
+    if (!id) {
+      console.error('[Kulbit-Video] ❌ немає data-kulbit-video-id на', box);
+      return null;
+    }
+
+    // Контейнер — система координат для iframe + ховає overflow
+    box.style.position = 'relative';
+    box.style.overflow = 'hidden';
+
+    // Прибираємо порожню заглушку <video> (Vimeo працює через <iframe>)
+    const stub = box.querySelector('video');
+    if (stub) stub.remove();
+
+    // unlisted-відео: хеш має бути В ШЛЯХУ URL — /{id}/{hash}
+    const url = hash ? `https://vimeo.com/${id}/${hash}` : `https://vimeo.com/${id}`;
+    const player = new Vimeo.Player(box, {
+      url,
+      background: true, // autoplay + loop + muted + без UI
+      dnt: true,        // do-not-track
+      responsive: false
+    });
+
+    player.ready().then(() => {
+      const iframe = box.querySelector('iframe');
+      if (iframe) {
+        applyCover(box, iframe);
+        // Перерахунок cover при зміні розміру контейнера (ресайз вікна)
+        new ResizeObserver(() => applyCover(box, iframe)).observe(box);
+      }
+      console.log('[Kulbit-Video] ✅ плеєр готовий (cover активний)');
+    }).catch((e) => console.error('[Kulbit-Video] ❌ помилка завантаження:', e));
+
+    // Кнопка звуку — старт muted (перекреслена іконка), клік перемикає
+    const btn = document.querySelector('[data-kulbit-sound]');
+    if (btn) {
+      setSoundIcons(btn, true, false); // початковий стан без анімації
+      btn.addEventListener('click', () => {
+        player.getMuted().then((m) => player.setMuted(!m).then(() => {
+          const muted = !m;
+          setSoundIcons(btn, muted, true);
+          console.log('[Kulbit-Video] 🔊 muted →', muted);
+        }));
+      });
+    } else {
+      console.warn('[Kulbit-Video] кнопку [data-kulbit-sound] не знайдено');
+    }
+
+    return player;
+  };
+
+  // 04 — Старт після готовності DOM
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof Vimeo === 'undefined') {
+      console.error('[Kulbit-Video] ❌ Vimeo Player SDK не підключено (player.js перед бандлом)');
+      return;
+    }
+    const boxes = document.querySelectorAll('[data-kulbit-video]');
+    if (!boxes.length) {
+      console.log('[Kulbit-Video] відео-блоків [data-kulbit-video] немає');
+      return;
+    }
+    window.KulbitApp = window.KulbitApp || {};
+    window.KulbitApp.players = window.KulbitApp.players || [];
+    boxes.forEach((box) => {
+      const player = initVideo(box);
+      if (player) window.KulbitApp.players.push(player);
+    });
+  });
+})();
 
 
 // ====================================================================

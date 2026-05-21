@@ -106,8 +106,9 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     }
 
     if (!app.lockViewport()) return;
-    app.registerSections(); // визначено у 03-sections.js
-    app.registerSteps();    // визначено у 03-sections.js (детектить кроки з розмітки)
+    app.registerSections();   // визначено у 03-sections.js
+    app.registerSteps();      // reveal-кроки [data-kulbit-step]
+    app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
     app.setupObserver();
     window.addEventListener('resize', app.handleResize);
     console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');
