@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T21:19:10.609Z */
+/* Kulbit Webflow — зібрано 2026-05-21T21:26:56.741Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -957,12 +957,11 @@ console.log('[Kulbit] 09-button-border.js завантажено');
     const build = () => {
       const cs = getComputedStyle(el);
       if (cs.position === 'static') el.style.position = 'relative';
-      // ДРОБОВІ розміри border-box (getBoundingClientRect), а не округлені offsetWidth/offsetHeight:
-      // інакше права/нижня грань недотягують на частку пікселя (ліво/верх від 0 — точні, похибка
-      // накопичується до дальніх граней). Кнопка на момент build не трансформована (hero крок 0).
-      const bcr = el.getBoundingClientRect();
-      const w = bcr.width;
-      const h = bcr.height;
+      // offsetWidth/offsetHeight — ЛЕЙАУТ-розмір border-box, ІМУННИЙ до CSS-transform (на кнопці/предку
+      // у нас є transform від стекінгу/анімацій). getBoundingClientRect дав би ВІЗУАЛЬНИЙ (зменшений
+      // трансформом) розмір, а SVG живе в лейаут-просторі → рамка виходила менша й тулилась у кут.
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
       const sw = parseFloat(cs.borderTopWidth) || 2;     // товщина лінії = товщині бордера
       const r = parseFloat(cs.borderTopLeftRadius) || 0; // радіус кутів
 
@@ -971,15 +970,15 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       const svg = document.createElementNS(NS, 'svg');
       svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
       svg.setAttribute('preserveAspectRatio', 'none');
-      // Оверлей точно на border-box (зсув -sw від padding-box) + явні розміри в px == viewBox →
-      // масштаб строго 1:1 на ОБОХ осях. Без цього (коли rendered != viewBox) штрих перекошує:
-      // тулиться до верху/правого боку, а ліворуч/знизу зʼявляється відступ. overflow:visible →
-      // штрих може вийти за бордер. config.offset виносить лінію НАЗОВНІ симетрично з усіх боків.
+      // Оверлей розтягуємо ТОЧНО на border-box через inset: -sw з усіх боків (top/left/right/bottom).
+      // inset рахується від padding-box батька в ЛЕЙАУТ-просторі (дробово й точно, без округлення
+      // offsetWidth і без впливу transform), тож права/нижня грань сходяться. preserveAspectRatio:none
+      // → viewBox розтягується рівно під цей box. overflow:visible + config.offset → штрих можна
+      // винести назовні (0 = рівно по бордеру).
       const off = config.offset;
       Object.assign(svg.style, {
         position: 'absolute',
-        top: `-${sw}px`, left: `-${sw}px`,
-        width: `${w}px`, height: `${h}px`,
+        top: `-${sw}px`, left: `-${sw}px`, right: `-${sw}px`, bottom: `-${sw}px`,
         pointerEvents: 'none', overflow: 'visible', zIndex: '2'
       });
 
