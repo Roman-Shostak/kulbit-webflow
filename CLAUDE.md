@@ -61,9 +61,9 @@ Kulbit — **клієнтський сайт-лендинг** який розр�
 | -------------- | -------------------------------------- | ---------------------------- |
 | Webflow        | No-code платформа, HTML/CSS, хостинг   | актуальна                    |
 | GSAP           | Анімаційна бібліотека (core)           | остання з Webflow-інтеграції |
-| ScrollSmoother | Smooth scroll + parallax effects       | GSAP-плагін                  |
-| ScrollTrigger  | Scroll-based анімації                  | GSAP-плагін                  |
-| Observer       | Перехоплення wheel/touch/pointer подій | GSAP-плагін                  |
+| **Observer**   | **Ядро навігації** — wheel/touch/pointer + детекція жесту | GSAP-плагін     |
+| ~~ScrollSmoother~~ | ❌ ВІДКИНУТО (див. ADR-008) — конфліктував із жорстким snap | —          |
+| ScrollTrigger  | Scroll-based анімації (другорядна роль — немає вільного скролу) | GSAP-плагін |
 | ScrollTo       | Програмний скрол до позицій            | GSAP-плагін                  |
 | SplitText      | Розрізання тексту для анімацій         | GSAP-плагін                  |
 | Flip           | Smooth layout transitions              | GSAP-плагін                  |
@@ -83,7 +83,8 @@ Kulbit — **клієнтський сайт-лендинг** який розр�
 ### НЕ використовуємо
 
 - ❌ **fullpage.js** — вирішено будувати snap-логіку на GSAP Observer
-- ❌ **Lenis** — замінений на ScrollSmoother (нативна інтеграція з ScrollTrigger)
+- ❌ **Lenis** — не використовуємо
+- ❌ **ScrollSmoother** — відкинуто на Кроці 3 (див. ADR-008): на сайті немає вільного скролу, тож smooth-scroll конфліктував зі snap. Рух керується трансформом контенту.
 - ❌ **jQuery** — vanilla JS + GSAP
 - ❌ **TypeScript** — pure JavaScript (ES6+)
 - ❌ **Webpack / Vite / bundlers** — простий Node-скрипт для конкатенації
@@ -122,7 +123,7 @@ Kulbit — **клієнтський сайт-лендинг** який розр�
 
 Кнопки можуть вести на **конкретну секцію + конкретний крок анімації**. Логіка:
 
-1. Плавний ScrollSmoother скрол до секції
+1. Плавний перехід до секції (зсув треку трансформом, `goToSection()`)
 2. GSAP timeline швидко догравається до потрібного кроку
 3. Далі звичайна snap-поведінка
 4. Користувач завжди може скролити вгору/вниз — анімація буде у відповідному стані
@@ -153,31 +154,39 @@ Kulbit — **клієнтський сайт-лендинг** який розр�
 ```javascript
 window.KulbitApp = {
   // Стан
-  sections: [],              // масив зареєстрованих секцій
+  sections: [],              // масив зареєстрованих секцій { el, index, isFooter }
   currentSectionIndex: 0,    // індекс поточної секції
-  currentStep: 0,            // поточний крок у покроковій секції
+  currentStep: 0,            // поточний крок у покроковій секції (Крок 5)
   isAnimating: false,        // блокування під час переходів
 
-  // GSAP-інстанси
-  smoother: null,            // ScrollSmoother instance
-  observer: null,            // Observer instance
+  // GSAP-інстанси та DOM
+  observer: null,            // Observer instance (ядро навігації)
+  wrapper: null,             // #smooth-wrapper — фіксований вьюпорт (overflow hidden)
+  content: null,             // #smooth-content — рухомий трек із секціями (рухаємо transform-ом)
 
   // Конфіг
   config: {
-    scrollDuration: 0.7,     // тривалість переходу між секціями
-    stepDuration: 0.6,       // тривалість кроку анімації
-    autoPlayStepDuration: 0.3 // швидке догравання при кліку на кнопку
+    scrollDuration: 0.7,       // тривалість переходу між секціями
+    stepDuration: 0.6,         // тривалість кроку анімації (Крок 5)
+    autoPlayStepDuration: 0.3, // швидке догравання при кліку на кнопку (Крок 4)
+    ease: 'power2.inOut',      // easing переходів
+    accelRatio: 1.4,           // поріг прискорення для детекції нового фліка (анти-інерція тачпада)
+    minVelocity: 60            // нижче цієї швидкості — «дотихання» інерції, ігноруємо
   },
 
-  // Методи
-  init() { ... },
-  registerSection(config) { ... },
-  goToSection(index, step = 0) { ... },
-  goToStep(target) { ... },
-  onScrollDown() { ... },
-  onScrollUp() { ... }
+  // Методи (реалізовані у 02-app-core.js та 03-sections.js)
+  init() { ... },             // lockViewport → registerSections → setupObserver → resize
+  lockViewport() { ... },     // фіксує #smooth-wrapper, вимикає вільний скрол
+  registerSections() { ... }, // збирає [data-kulbit-section], проставляє data-section-index
+  setupObserver() { ... },    // Observer + логіка жесту (анти-інерція)
+  goToSection(index, instant) { ... }, // зсув треку до секції (instant — без анімації, для ресайзу)
+  handleResize() { ... }
 };
 ```
+
+> **Механіка руху:** сторінка НЕ скролиться (`#smooth-wrapper` — `position: fixed; overflow: hidden`).
+> Перехід = `gsap.to(content, { y: -section.offsetTop })`. Один жест = один перехід; інерція тачпада
+> відсікається порівнянням швидкості (`accelRatio` / `minVelocity`). Деталі — ADR-008.
 
 ---
 
@@ -191,9 +200,9 @@ kulbit-webflow/
 ├── build.js                     # Node-скрипт конкатенації
 │
 ├── src/                         # Джерельні модулі (редагуються)
-│   ├── 01-init.js               # ScrollSmoother init + перевірка GSAP
-│   ├── 02-app-core.js           # window.KulbitApp + Observer setup
-│   ├── 03-sections.js           # Реєстрація секцій + їх timeline'и
+│   ├── 01-init.js               # Реєстрація GSAP-плагінів (Observer)
+│   ├── 02-app-core.js           # window.KulbitApp: стан, config, lockViewport, Observer
+│   ├── 03-sections.js           # Реєстрація секцій з DOM + goToSection (transform)
 │   ├── 04-navigation.js         # Логіка кнопок-переходів
 │   ├── 05-header.js             # Зникання абсолютного хедера
 │   ├── 06-responsive.js         # Респонсив + попап landscape
@@ -383,12 +392,14 @@ chore: оновив build.js
 - Економія $30-80 на ліцензіях (core + extensions)
 - Гнучкість для **>3 секцій з покроковою анімацією** (у fullpage це хак через `onLeave + return false`, в Observer — нативна архітектура)
 - Жодних обмежень по доменах і activation keys
-- Stacking-ефекти (секція 2 наїжджає на секцію 1) — нативно через ScrollTrigger pin
+- Stacking-ефекти (секція 2 наїжджає на секцію 1) — через GSAP-таймлайни на події Observer (⚠️ оновлено ADR-008: НЕ через ScrollTrigger pin, бо вільного скролу немає)
 - Roman прокачує реальні JS-навички
 
-### ADR-002: ScrollSmoother замість Lenis
+### ADR-002: ScrollSmoother замість Lenis — ⚠️ СКАСОВАНО (див. ADR-008)
 
-**Рішення:** ScrollSmoother від GreenSock, не Lenis.
+> **Статус: скасовано на Кроці 3 (21.05.2026).** ScrollSmoother прибрано повністю — він призначений для плавного *вільного* скролу, що прямо конфліктує з нашим жорстким snap (немає вільного скролу взагалі). Замість нього — рух треку трансформом + Observer. Деталі в ADR-008. Текст нижче лишаємо для історії.
+
+**Рішення (історичне):** ScrollSmoother від GreenSock, не Lenis.
 **Причини:**
 
 - Нативна інтеграція з ScrollTrigger (одна команда створення)
@@ -437,6 +448,27 @@ chore: оновив build.js
 - Простота — не треба webpack/vite/rollup для маленького проєкту
 - Roman може редагувати один файл не зачіпаючи інші
 
+### ADR-007: Декаплінг JS-гачка від стильового класу через data-атрибут
+
+**Рішення:** елементи-снап-секції (8 секцій + footer) позначаються окремим data-атрибутом `data-kulbit-section`, header — `data-kulbit-header`. Стильові класи лишаються чистими (`.section`, `.footer`, `.header`). JS реєструє секції через `querySelectorAll('[data-kulbit-section]')`, а **не** через клас. (Обрано варіант A замість generic-класів чи `kulbit-`-префікса.)
+**Причини:**
+
+- Клас, за який чіпляється JS, перетворюється на «контракт» — generic-імена (`section`/`header`) найлегше випадково продублювати (копіюванням компонента, CMS, правками клієнта) і зламати fullpage у важкий для дебагу спосіб. Data-атрибут — явний маркер «це снап-зупинка», який ніхто не чіпатиме випадково.
+- Стильові класи можна вільно перейменовувати/рефакторити, не зачіпаючи логіку (розв'язка стилю і поведінки).
+- Узгоджено з уже наявним механізмом `data-target-section` / `data-target-step` (розділ 4) — data-атрибути = наш єдиний спосіб говорити з JS.
+- Підсилює reorder-safe принцип: JS не залежить ні від стильових класів, ні від ручної нумерації (`data-section-index` все одно проставляється з DOM-порядку на Кроці 3).
+
+### ADR-008: Жорсткий fullpage на Observer + transform (без ScrollSmoother)
+
+**Рішення:** прибрати ScrollSmoother. Сторінка взагалі не скролиться: `#smooth-wrapper` фіксований (`position: fixed; overflow: hidden`), а `#smooth-content` (трек із 9 секцій) рухаємо трансформом `gsap.to(content, { y: -section.offsetTop })`. Навігацію драйвить GSAP **Observer** (`preventDefault: true`). Один жест = один перехід.
+**Причини:**
+
+- ScrollSmoother створений для плавного **вільного** скролу — це пряма протилежність вимозі «жодних вільних скролів, дуже жорстко». На практиці ScrollSmoother (його `normalizeScroll`) перехоплював колесо/тач паралельно з нашим Observer → секції «летіли в кінець і назад». Два механізми билися за керування скролом.
+- На сайті без вільного скролу parallax «по скролу» (`data-speed`/`data-lag` — головна цінність ScrollSmoother) **не має сенсу**. Усі ефекти й так житимуть у GSAP-таймлайнах (переходи + покрокові анімації).
+- `overflow: hidden` на вьюпорті = вільний скрол **фізично неможливий** (гарантія, а не прапорець).
+
+**Анти-інерція тачпада (ключова деталь):** один фізичний свайп тачпада = довгий потік wheel-подій з інерцією. Таймер-замок це не лікує (інерція триває довше). Рішення: відрізняємо **новий флік** від **хвоста інерції** за швидкістю (`Observer.velocityY`). Хвіст сповільнюється → ігноруємо; новий флік дає сплеск швидкості (> `config.accelRatio` × попередня і > `config.minVelocity`) → приймаємо. Працює однаково на миші й тачпаді. Числа — у `KulbitApp.config`, підбирались емпірично (`accelRatio: 1.4`, `minVelocity: 60`).
+
 ---
 
 ## 11. План виконання — поточний статус
@@ -450,20 +482,21 @@ chore: оновив build.js
 - [x] **Крок 0:** створення GitHub-репо (`Roman-Shostak/kulbit-webflow`) + локальної структури — `src/` з 7 модулями-скелетами (поки лише `console.log` + плейсхолдери), `dist/kulbit-main.js`, `build.js`, перший коміт `04dfdc3` запушено на `origin/main`
 - [x] **Крок 0.1:** jsDelivr підтверджено — `kulbit-main.js` віддається з CDN
 - [x] **Крок 0.2:** підключення в Webflow Footer Code підтверджено — `console.log` з усіх 7 модулів зʼявляються в консолі staging
-- [x] **Крок 1:** ScrollSmoother init — `01-init.js` створює інстанс (smooth `1.2`, effects, normalizeScroll, smoothTouch `0.1`, ignoreMobileResize) на `DOMContentLoaded` і виставляє його у `window.KulbitApp.smoother`; перевірено наскрізь (console-тест → пуш → purge → продакшн-бандл на staging)
+- [x] **Крок 1:** ScrollSmoother init — _згодом скасовано на Кроці 3 (ADR-008)._ `01-init.js` тепер лише реєструє плагіни (Observer). ScrollSmoother прибрано — конфліктував із жорстким snap.
 
 ### В роботі / наступні кроки
 
-- [ ] **Крок 2:** створення 8 секцій + footer у Webflow Designer — **у процесі (на боці Romana, у Designer)**
+- [x] **Крок 2:** створення 8 секцій + footer у Webflow Designer — **завершено і перевірено** (21.05.2026): сніппет повернув **9** зупинок у DOM-порядку, кожна 100vh (1054px на тест-екрані); `#8` = footer з класами `section footer`; header має `data-kulbit-header` (`Header знайдено: true`)
   - **Узгоджені конвенції розмітки (lock-ed):**
-    - усі 8 секцій + footer мають спільний клас `.section` (footer додатково `.footer`), кожна `height: 100vh`, усередині `.container`
+    - усі 8 секцій + footer мають спільний **стильовий** клас `.section` (footer додатково `.footer`), кожна `height: 100vh`, усередині `.container`
+    - **JS-гачок — окремий data-атрибут `data-kulbit-section`** на кожній із 9 зупинок (НЕ клас): JS реєструє секції через `querySelectorAll('[data-kulbit-section]')`. Стильові класи можна вільно перейменовувати/рефакторити — логіка не зламається (варіант A, рішення 21.05.2026 — див. ADR-007)
+    - header: стильовий клас `.header` + JS-гачок `data-kulbit-header` (та сама логіка декаплінгу)
     - footer = **остання (9-та) снап-зупинка**
     - `data-section-index` (0..N) **проставляє JS з DOM-порядку** на Кроці 3 — Roman НЕ нумерує вручну (стійкість до реордеру клієнтом)
     - покроковість секції детектиться **з розмітки** (step-елементи), а НЕ зі списку в JS — жодного хардкоду «секція N = покрокова»
     - кнопки-переходи (ADR-003): для стійкості до реордеру схиляємось до іменованих якорів (`data-section-name`) замість номерів — **рішення на Кроці 4**
-  - **Точка відновлення наступної сесії:** коли Roman зверстає 8 секцій + footer і опублікує staging → Claude дає консольний сніппет-перевірку (`querySelectorAll('.section')` має повернути **9** зупинок у DOM-порядку, кожна 100vh) → після підтвердження пишемо `03-sections.js` (Крок 3) і пропонуємо **ADR-007** (reorder-safe реєстрація секцій)
-  - **Незакомічене:** правки `CLAUDE.md` (цей розділ) ще не запушені — закомітити `docs:`-комітом
-- [ ] **Крок 3:** Observer-логіка для snap-навігації між секціями
+  - **Перевірку пройдено** (21.05.2026): консольний сніппет повернув 9 зупинок, footer `#8` = `section footer`, header = `data-kulbit-header`. Розмітку зафіксовано — далі `03-sections.js` (Крок 3)
+- [x] **Крок 3:** snap-навігація між секціями — **завершено** (21.05.2026). Спочатку пробували Observer поверх ScrollSmoother → конфлікт (секції «летіли в кінець і назад», тачпад збоїв через інерцію). Пивот → **ADR-008**: ScrollSmoother прибрано, жорсткий fullpage на Observer + transform, анти-інерція по швидкості. Зібрано в модулі `01-init.js` / `02-app-core.js` / `03-sections.js`. Перевірено в консолі на миші + тачпаді (ідеально). **Далі:** пуш → purge → перевірка бандла на staging.
 - [ ] **Крок 4:** обробники кнопок-переходів (data-target-section)
 - [ ] **Крок 5:** перша покрокова анімація — реалізація на одній секції
 - [ ] **Крок 6:** масштабування покрокових анімацій на всі релевантні секції
@@ -487,7 +520,8 @@ chore: оновив build.js
 
 ### Технічні ризики
 
-- **ScrollSmoother + Observer + ScrollTrigger** — складна звʼязка, потенційні конфлікти на iOS Safari (потрібне тестування)
+- **Observer + transform fullpage на iOS Safari** — `preventDefault` на touch + `100vh`/`offsetTop` поведінка на мобілці (адресний бар) потребують тестування на реальних девайсах (Крок 8). `accelRatio`/`minVelocity` можливо доведеться калібрувати під тач.
+- **ScrollSmoother прибрано (ADR-008)** — якщо колись знадобиться parallax по скролу, доведеться переглядати всю модель навігації
 - **Webflow CMS** — якщо в проєкті з'являться CMS-колекції з динамічними секціями, треба буде переробляти реєстрацію секцій
 - **Кеш jsDelivr** — при швидких ітераціях розробки покривається через purge, але треба пам'ятати про це
 
@@ -528,5 +562,5 @@ chore: оновив build.js
 
 ---
 
-_Останнє оновлення цього файлу: 20 травня 2026 — Крок 1 завершено (ScrollSmoother init у `01-init.js`); Кроки 0.1/0.2 підтверджено. Наступний — Крок 2 (8 секцій + footer у Webflow Designer)._
+_Останнє оновлення цього файлу: 21 травня 2026 — Кроки 2 і 3 завершено. Крок 2: розмітка секцій (варіант A — `.section`/`.header` + `data-kulbit-section`/`data-kulbit-header`, ADR-007). Крок 3: ПИВОТ — ScrollSmoother прибрано, жорсткий fullpage на Observer + transform з анти-інерцією (ADR-008); зібрано модулі `01-03`. Наступний — пуш/purge + перевірка бандла на staging, далі Крок 4 (кнопки-переходи)._
 _При значущих змінах архітектури — оновлювати розділ 10 (ADR) і розділ 11 (план)._

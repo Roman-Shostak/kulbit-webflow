@@ -1,79 +1,200 @@
-/* Kulbit Webflow — зібрано 2026-05-20T15:38:51.955Z */
+/* Kulbit Webflow — зібрано 2026-05-21T06:22:44.969Z */
 
 // ====================================================================
-// 01-init.js — Ініціалізація ScrollSmoother + реєстрація GSAP-плагінів
+// 01-init.js — Реєстрація GSAP-плагінів
 // Kulbit — кастомний сайт на Webflow + GSAP
+// Архітектура: жорсткий fullpage БЕЗ вільного скролу, на Observer + transform
+//              (без ScrollSmoother — див. ADR-008)
 // ====================================================================
 
 console.log('[Kulbit] 01-init.js завантажено');
 
-// ## — Ініціалізація ScrollSmoother (огорнуто в IIFE, щоб не засмічувати глобал)
+// ## — Реєстрація плагінів (огорнуто в IIFE, щоб не засмічувати глобал)
 (() => {
-  // Конфіг ScrollSmoother — оптимально для лендингу
-  const config = {
-    smooth: 1.2,             // згладжування скролу на десктопі (сек)
-    effects: true,           // вмикає data-speed / data-lag (parallax)
-    normalizeScroll: true,   // нормалізація скролу — важливо для iOS Safari
-    smoothTouch: 0.1,        // легке згладжування на тач-девайсах
-    ignoreMobileResize: true // ігнорувати resize від URL-бару на мобілці
-  };
+  // 01 — Перевірка наявності GSAP та Observer — без них логіка не працює
+  if (typeof gsap === 'undefined' || typeof Observer === 'undefined') {
+    console.error('[Kulbit-Init] ❌ GSAP або Observer не завантажені — перевір підключення плагінів у Webflow');
+    return;
+  }
 
-  // Ініціалізація після готовності DOM
-  document.addEventListener('DOMContentLoaded', () => {
-    // 01 — Перевірка наявності GSAP та ScrollSmoother
-    if (typeof gsap === 'undefined' || typeof ScrollSmoother === 'undefined') {
-      console.error('[Kulbit-Init] ❌ GSAP або ScrollSmoother не завантажені — ScrollSmoother не створено');
-      return;
-    }
+  // 02 — Observer — ядро навігації (перехоплення wheel/touch/pointer)
+  gsap.registerPlugin(Observer);
 
-    // 02 — Реєстрація плагінів
-    gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
-    console.log('[Kulbit-Init] Плагіни зареєстровано');
+  // 03 — ScrollTrigger — лишаємо зареєстрованим про запас (якщо підключений)
+  if (typeof ScrollTrigger !== 'undefined') {
+    gsap.registerPlugin(ScrollTrigger);
+  }
 
-    // 03 — Якщо інстанс уже існує (повторна ініціалізація) — прибираємо
-    const existing = ScrollSmoother.get();
-    if (existing) {
-      existing.kill();
-      console.log('[Kulbit-Init] Старий інстанс ScrollSmoother прибрано');
-    }
-
-    // 04 — Створення ScrollSmoother
-    const smoother = ScrollSmoother.create({
-      wrapper: '#smooth-wrapper',
-      content: '#smooth-content',
-      smooth: config.smooth,
-      effects: config.effects,
-      normalizeScroll: config.normalizeScroll,
-      smoothTouch: config.smoothTouch,
-      ignoreMobileResize: config.ignoreMobileResize
-    });
-
-    // 05 — Виставляємо інстанс у глобальний обʼєкт для доступу з інших модулів
-    //      (повноцінний KulbitApp буде створено у 02-app-core.js на Кроці 3)
-    window.KulbitApp = window.KulbitApp || {};
-    window.KulbitApp.smoother = smoother;
-
-    console.log('[Kulbit-Init] ✅ ScrollSmoother створено та виставлено у window.KulbitApp.smoother');
-  });
+  console.log('[Kulbit-Init] ✅ Плагіни зареєстровано (Observer)');
 })();
 
 
 // ====================================================================
-// 02-app-core.js — Глобальний обʼєкт KulbitApp + Observer
+// 02-app-core.js — Ядро застосунку: стан, config, фіксація вьюпорта,
+//                   Observer + логіка жесту (анти-інерція)
 // ====================================================================
 
 console.log('[Kulbit] 02-app-core.js завантажено');
 
-// Тут буде window.KulbitApp + Observer (Крок 3)
+// ## — Створення глобального обʼєкта KulbitApp + ініціалізація
+(() => {
+  window.KulbitApp = window.KulbitApp || {};
+  const app = window.KulbitApp;
+
+  // 01 — Стан (єдина точка істини про сайт)
+  app.sections = app.sections || []; // масив зареєстрованих секцій (заповнює 03-sections.js)
+  app.currentSectionIndex = 0;       // індекс поточної секції
+  app.currentStep = 0;               // поточний крок у покроковій секції (Крок 5)
+  app.isAnimating = false;           // блокування під час переходів
+  app.observer = null;               // інстанс Observer
+  app.wrapper = null;                // #smooth-wrapper — фіксований вьюпорт
+  app.content = null;                // #smooth-content — рухомий трек із секціями
+
+  // 02 — Конфіг (усі числа тут, без magic numbers по коду)
+  app.config = {
+    scrollDuration: 0.7,       // тривалість переходу між секціями
+    stepDuration: 0.6,         // тривалість кроку покрокової анімації (Крок 5)
+    autoPlayStepDuration: 0.3, // швидке догравання при кліку на кнопку (Крок 4)
+    ease: 'power2.inOut',      // easing переходів
+    accelRatio: 1.4,           // у скільки разів має зрости швидкість, щоб вважати НОВИМ фліком
+    minVelocity: 60            // нижче цієї швидкості — «дотихання» інерції, ігноруємо
+  };
+
+  // 03 — Фіксація вьюпорта: вільний скрол стає фізично неможливим
+  app.lockViewport = () => {
+    app.wrapper = document.querySelector('#smooth-wrapper');
+    app.content = document.querySelector('#smooth-content');
+    if (!app.wrapper || !app.content) {
+      console.error('[Kulbit-Core] ❌ Немає #smooth-wrapper / #smooth-content — перевір розмітку');
+      return false;
+    }
+    Object.assign(app.wrapper.style, {
+      position: 'fixed',
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      overflow: 'hidden'
+    });
+    gsap.set(app.content, { y: 0 });
+    window.scrollTo(0, 0);
+    console.log('[Kulbit-Core] вьюпорт зафіксовано (вільний скрол вимкнено)');
+    return true;
+  };
+
+  // 04 — Логіка жесту: відрізняємо НОВИЙ флік від хвоста інерції за швидкістю.
+  //      Хвіст інерції сповільнюється → ігноруємо; новий флік дає сплеск швидкості → приймаємо.
+  let flinging = false; // чи триває інерція попереднього жесту
+  let prevVel = 0;      // швидкість попередньої події (для детекції прискорення)
+
+  const handleGesture = (dir, self) => {
+    const vel = Math.abs(self.velocityY);
+    const accelerating = vel > prevVel * app.config.accelRatio && vel > app.config.minVelocity;
+    prevVel = vel;
+
+    if (app.isAnimating) return;           // йде перехід — чекаємо завершення
+    if (flinging && !accelerating) return; // це хвіст інерції — ігноруємо
+
+    flinging = true;
+    app.goToSection(app.currentSectionIndex + dir); // goToSection визначено у 03-sections.js
+  };
+
+  // 05 — Створення Observer (один жест = один перехід)
+  app.setupObserver = () => {
+    if (app.observer) app.observer.kill();
+    app.observer = Observer.create({
+      target: window,
+      type: 'wheel,touch,pointer',
+      tolerance: 10,
+      preventDefault: true, // блокуємо нативний скрол — рухаємось ТІЛЬКИ по секціях
+      onDown: (self) => handleGesture(1, self),
+      onUp: (self) => handleGesture(-1, self),
+      onStop: () => { flinging = false; prevVel = 0; } // приймаємо новий ввід лише коли все стихло
+    });
+    console.log('[Kulbit-Core] Observer створено (snap активний)');
+  };
+
+  // 06 — Перепозиціонування при ресайзі (offsetTop секцій змінюється)
+  let resizeTimer = null;
+  app.handleResize = () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      app.goToSection(app.currentSectionIndex, true); // миттєво, без анімації
+      console.log('[Kulbit-Core] ресайз — перепозиціоновано на секцію', app.currentSectionIndex);
+    }, 150);
+  };
+
+  // 07 — Ініціалізація після готовності DOM
+  app.init = () => {
+    // Захист: якщо десь лишився живий ScrollSmoother — прибираємо (він тягне вільний скрол)
+    if (typeof ScrollSmoother !== 'undefined' && ScrollSmoother.get()) {
+      ScrollSmoother.get().kill();
+      console.log('[Kulbit-Core] знайдено старий ScrollSmoother — прибрано');
+    }
+
+    if (!app.lockViewport()) return;
+    app.registerSections(); // визначено у 03-sections.js
+    app.setupObserver();
+    window.addEventListener('resize', app.handleResize);
+    console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');
+  };
+
+  document.addEventListener('DOMContentLoaded', () => app.init());
+})();
 
 
 // ====================================================================
-// 03-sections.js — Реєстрація секцій та їх timeline'ів
+// 03-sections.js — Реєстрація секцій з DOM + перехід між ними
+//                  (методи додаються до KulbitApp з 02-app-core.js)
 // ====================================================================
 
 console.log('[Kulbit] 03-sections.js завантажено');
 
-// Тут буде логіка секцій з покроковою анімацією (Крок 5)
+// ## — Методи роботи з секціями
+(() => {
+  window.KulbitApp = window.KulbitApp || {};
+  const app = window.KulbitApp;
+
+  // 01 — Реєстрація секцій з DOM.
+  //      Індекс проставляє JS з DOM-порядку (reorder-safe — нічого не хардкодимо).
+  app.registerSections = () => {
+    const els = document.querySelectorAll('[data-kulbit-section]');
+    app.sections = Array.from(els).map((el, index) => {
+      el.setAttribute('data-section-index', index);
+      return { el, index, isFooter: el.classList.contains('footer') };
+    });
+
+    if (!app.sections.length) {
+      console.error('[Kulbit-Sections] ❌ Не знайдено секцій [data-kulbit-section]');
+      return;
+    }
+    console.log('[Kulbit-Sections] зареєстровано секцій:', app.sections.length);
+  };
+
+  // 02 — Перехід на секцію: зсуваємо трек так, щоб верх секції став верхом екрана.
+  //      instant = true → миттєво без анімації (для ресайзу).
+  app.goToSection = (index, instant) => {
+    if (!app.sections.length || !app.content) return;
+
+    const clamped = Math.max(0, Math.min(index, app.sections.length - 1));
+    const targetY = app.sections[clamped].el.offsetTop;
+    app.currentSectionIndex = clamped;
+
+    if (instant) {
+      gsap.set(app.content, { y: -targetY });
+      return;
+    }
+
+    app.isAnimating = true;
+    gsap.to(app.content, {
+      y: -targetY,
+      duration: app.config.scrollDuration,
+      ease: app.config.ease,
+      onComplete: () => { app.isAnimating = false; }
+    });
+    console.log('[Kulbit-Nav] секція →', clamped);
+  };
+})();
 
 
 // ====================================================================
