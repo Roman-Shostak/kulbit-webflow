@@ -92,15 +92,31 @@ console.log('[Kulbit] 08-video.js завантажено');
     };
   };
 
-  // 04 — Пауза/звук по видимості: відео активне лише коли його секція поточна.
-  //      Кличе навігація (03-sections.js) при зміні currentSectionIndex.
+  // 04 — Пауза/звук по видимості. Розділено на show/hide, бо таймінг різний:
+  //      показати поточне відео — ОДРАЗУ (грає, поки секцію наповзає/відкривають);
+  //      сховати накриті — на ЗАВЕРШЕННІ переходу (секція торкнулась верху екрана) — див. goToSection.
+  //      landscapeBlocked (06-responsive.js): у landscape-попапі відео завжди на паузі.
   window.KulbitApp = window.KulbitApp || {};
-  window.KulbitApp.updateVideoVisibility = () => {
+
+  window.KulbitApp.showCurrentVideo = () => {
     const app = window.KulbitApp;
+    if (app.landscapeBlocked) return; // landscape-попап — нічого не граємо
     (app.videos || []).forEach((rec) => {
       if (rec.sectionIndex === app.currentSectionIndex) rec.show();
-      else rec.hide();
     });
+  };
+
+  window.KulbitApp.hideOtherVideos = () => {
+    const app = window.KulbitApp;
+    (app.videos || []).forEach((rec) => {
+      if (app.landscapeBlocked || rec.sectionIndex !== app.currentSectionIndex) rec.hide();
+    });
+  };
+
+  // Повне миттєве оновлення (миттєві переходи, попап, init): спершу сховати зайве, тоді показати поточне.
+  window.KulbitApp.updateVideoVisibility = () => {
+    window.KulbitApp.hideOtherVideos();
+    window.KulbitApp.showCurrentVideo();
   };
 
   // 05 — Старт після готовності DOM

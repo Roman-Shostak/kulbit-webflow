@@ -32,24 +32,22 @@ console.log('[Kulbit] 06-responsive.js завантажено');
       `(orientation: landscape) and (max-height: ${maxH}px) and (pointer: coarse)`
     );
 
-    // — Виставити стан сайту за поточною орієнтацією
+    // — Виставити стан сайту за поточною орієнтацією.
+    //   Перебудову hero при зміні брейкпоінта/орієнтації робить gsap.matchMedia (03-sections.js),
+    //   тут лише попап + Observer + прапорець landscapeBlocked (його поважає логіка відео).
     const apply = () => {
       if (mql.matches) {
-        // landscape-телефон: попап ON, fullpage OFF, відео пауза
+        // landscape-телефон: попап ON, fullpage OFF, усе відео на паузі
+        app.landscapeBlocked = true;
         popup.style.display = 'flex';
         if (app.observer) app.observer.disable();
-        (app.videos || []).forEach((rec) => rec.hide());
+        if (app.updateVideoVisibility) app.updateVideoVisibility(); // landscapeBlocked → пауза всіх
         console.log('[Kulbit-Responsive] landscape-телефон: попап ON, fullpage OFF');
       } else {
         // портрет / не-телефон: попап OFF, fullpage ON
+        app.landscapeBlocked = false;
         popup.style.display = 'none';
         if (app.observer) app.observer.enable();
-        // якщо сторінку відкрили в landscape — hero міг не побудуватись; добудовуємо
-        const hero = app.sections && app.sections[0];
-        if (hero && !hero.isTabletHero && !hero.isAnimated && app.registerAnimations) {
-          app.registerAnimations();
-          console.log('[Kulbit-Responsive] hero добудовано на повернення в портрет');
-        }
         if (app.updateVideoVisibility) app.updateVideoVisibility();
         console.log('[Kulbit-Responsive] портрет: попап OFF, fullpage ON');
       }

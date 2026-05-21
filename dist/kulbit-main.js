@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T18:27:41.137Z */
+/* Kulbit Webflow — зібрано 2026-05-21T18:51:47.506Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -215,24 +215,53 @@ console.log('[Kulbit] 03-sections.js завантажено');
     });
   };
 
-  // 03 — Реєстрація анімацій hero за брейкпоінтом (одноразово при init, ADR-011).
+  // 03 — Реєстрація анімацій hero за брейкпоінтом — ДИНАМІЧНО через gsap.matchMedia (ADR-011/012).
+  //      Зміна ширини/орієнтації перебудовує hero БЕЗ reload: на вхід у брейкпоінт — будуємо,
+  //      на вихід — GSAP сам ревертить таймлайни/сети контексту, ми чистимо стан (teardownHero).
   //      Desktop (≥992): атрибутні таймлайни (ADR-009).
   //      Tablet (768-991) ТА Mobile (≤479): та сама спец hero-хореографія (buildTabletHero),
   //        читає ті самі -tablet атрибути; геометрія (16:9/кнопка/накриття) рахується динамічно.
   //      480-767 («Mobile landscape» у Webflow): діапазон попапа «поверни екран» — hero не будуємо.
-  //      Зміна брейкпоінта → потрібен reload.
+  //      На кожній зміні брейкпоінта повертаємось на hero (resetHeroState) — стан стартує чистим.
   app.registerAnimations = () => {
-    const w = window.innerWidth;
-    if (w >= 992) {
-      app.buildDesktopAnimations();          // desktop ≥992 (ADR-009)
-    } else if (w >= 768) {
-      app.buildTabletHero();                 // tablet 768-991 (ADR-011)
-    } else if (w <= 479) {
-      app.buildTabletHero();                 // mobile ≤479 — та сама хореографія, що й таблет
-    } else {
-      // 480-767 — горизонтальна мобілка: попап «поверни екран» (підкрок Кроку 8); hero не будуємо
-      console.log('[Kulbit-Anim] 480-767px — діапазон попапа landscape, hero не будуємо');
-    }
+    if (app.mm) app.mm.kill();         // якщо колись перевикликають — прибрати старий matchMedia
+    app.mm = gsap.matchMedia();
+
+    const buildTablet = () => {        // спільна гілка для tablet і mobile (однакова хореографія)
+      app.resetHeroState();
+      app.buildTabletHero();
+      return () => app.teardownHero();
+    };
+
+    app.mm.add('(min-width: 992px)', () => {              // desktop ≥992
+      app.resetHeroState();
+      app.buildDesktopAnimations();
+      return () => app.teardownHero();
+    });
+    app.mm.add('(min-width: 768px) and (max-width: 991px)', buildTablet); // tablet 768-991
+    app.mm.add('(max-width: 479px)', buildTablet);                        // mobile-портрет ≤479
+    // 480-767 — горизонтальна мобілка: hero не будуємо (попап landscape, 06-responsive.js)
+
+    console.log('[Kulbit-Anim] matchMedia активний (брейкпоінти 992/768/479, динамічна перебудова)');
+  };
+
+  // 03-0 — Чистий стан перед побудовою hero (старт кожного брейкпоінта з hero, крок 0).
+  app.resetHeroState = () => {
+    app.currentSectionIndex = 0;
+    app.currentStep = 0;
+    app.isAnimating = false;
+    app.applyStackingPositions();                 // дискретні позиції стекінгу під currentSectionIndex=0
+    if (app.updateVideoVisibility) app.updateVideoVisibility();
+  };
+
+  // 03-0b — Прибирання hero при виході з брейкпоінта. GSAP САМ ревертить таймлайни/сети контексту;
+  //         нам лишається скинути наші посилання/прапорці (новий контекст усе перебудує).
+  app.teardownHero = () => {
+    app.sections.forEach((s) => {
+      s.timeline = null; s.isAnimated = false;
+      s.tabletTL = null; s.isTabletHero = false;
+    });
+    console.log('[Kulbit-Anim] teardown hero (зміна брейкпоінта)');
   };
 
   // 03a — Desktop: атрибутні таймлайни по секціях (ADR-009).
@@ -499,23 +528,30 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
 
     app.isAnimating = true;
+    app.currentSectionIndex = clamped;
+    // Відео нової поточної секції — показуємо ОДРАЗУ (грає, поки секція наповзає/відкривається).
+    if (app.showCurrentVideo) app.showCurrentVideo();
+    const finish = () => {
+      app.isAnimating = false;
+      // Відео накритих секцій — пауза САМЕ КОЛИ перехід завершився (секція торкнулась верху екрана),
+      // а не на початку наповзання. На таблеті/мобілці пауза вже в onComplete кроку 3 (tabletHeroStep).
+      if (app.hideOtherVideos) app.hideOtherVideos();
+    };
     if (dir > 0) {
       // вниз: ціль наповзає знизу поверх поточної
       gsap.to(target.el, {
         yPercent: 0,
         duration: app.config.scrollDuration, ease: app.config.ease,
-        onComplete: () => { app.isAnimating = false; }
+        onComplete: finish
       });
     } else {
       // вгору: поточна сповзає вниз, відкриваючи попередню
       gsap.to(app.sections[prev].el, {
         yPercent: 100,
         duration: app.config.scrollDuration, ease: app.config.ease,
-        onComplete: () => { app.isAnimating = false; }
+        onComplete: finish
       });
     }
-    app.currentSectionIndex = clamped;
-    if (app.updateVideoVisibility) app.updateVideoVisibility();
     console.log('[Kulbit-Nav] секція', prev, '→', clamped);
   };
 
@@ -698,24 +734,22 @@ console.log('[Kulbit] 06-responsive.js завантажено');
       `(orientation: landscape) and (max-height: ${maxH}px) and (pointer: coarse)`
     );
 
-    // — Виставити стан сайту за поточною орієнтацією
+    // — Виставити стан сайту за поточною орієнтацією.
+    //   Перебудову hero при зміні брейкпоінта/орієнтації робить gsap.matchMedia (03-sections.js),
+    //   тут лише попап + Observer + прапорець landscapeBlocked (його поважає логіка відео).
     const apply = () => {
       if (mql.matches) {
-        // landscape-телефон: попап ON, fullpage OFF, відео пауза
+        // landscape-телефон: попап ON, fullpage OFF, усе відео на паузі
+        app.landscapeBlocked = true;
         popup.style.display = 'flex';
         if (app.observer) app.observer.disable();
-        (app.videos || []).forEach((rec) => rec.hide());
+        if (app.updateVideoVisibility) app.updateVideoVisibility(); // landscapeBlocked → пауза всіх
         console.log('[Kulbit-Responsive] landscape-телефон: попап ON, fullpage OFF');
       } else {
         // портрет / не-телефон: попап OFF, fullpage ON
+        app.landscapeBlocked = false;
         popup.style.display = 'none';
         if (app.observer) app.observer.enable();
-        // якщо сторінку відкрили в landscape — hero міг не побудуватись; добудовуємо
-        const hero = app.sections && app.sections[0];
-        if (hero && !hero.isTabletHero && !hero.isAnimated && app.registerAnimations) {
-          app.registerAnimations();
-          console.log('[Kulbit-Responsive] hero добудовано на повернення в портрет');
-        }
         if (app.updateVideoVisibility) app.updateVideoVisibility();
         console.log('[Kulbit-Responsive] портрет: попап OFF, fullpage ON');
       }
@@ -832,15 +866,31 @@ console.log('[Kulbit] 08-video.js завантажено');
     };
   };
 
-  // 04 — Пауза/звук по видимості: відео активне лише коли його секція поточна.
-  //      Кличе навігація (03-sections.js) при зміні currentSectionIndex.
+  // 04 — Пауза/звук по видимості. Розділено на show/hide, бо таймінг різний:
+  //      показати поточне відео — ОДРАЗУ (грає, поки секцію наповзає/відкривають);
+  //      сховати накриті — на ЗАВЕРШЕННІ переходу (секція торкнулась верху екрана) — див. goToSection.
+  //      landscapeBlocked (06-responsive.js): у landscape-попапі відео завжди на паузі.
   window.KulbitApp = window.KulbitApp || {};
-  window.KulbitApp.updateVideoVisibility = () => {
+
+  window.KulbitApp.showCurrentVideo = () => {
     const app = window.KulbitApp;
+    if (app.landscapeBlocked) return; // landscape-попап — нічого не граємо
     (app.videos || []).forEach((rec) => {
       if (rec.sectionIndex === app.currentSectionIndex) rec.show();
-      else rec.hide();
     });
+  };
+
+  window.KulbitApp.hideOtherVideos = () => {
+    const app = window.KulbitApp;
+    (app.videos || []).forEach((rec) => {
+      if (app.landscapeBlocked || rec.sectionIndex !== app.currentSectionIndex) rec.hide();
+    });
+  };
+
+  // Повне миттєве оновлення (миттєві переходи, попап, init): спершу сховати зайве, тоді показати поточне.
+  window.KulbitApp.updateVideoVisibility = () => {
+    window.KulbitApp.hideOtherVideos();
+    window.KulbitApp.showCurrentVideo();
   };
 
   // 05 — Старт після готовності DOM
