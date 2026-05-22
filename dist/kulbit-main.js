@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-22T10:55:48.510Z */
+/* Kulbit Webflow — зібрано 2026-05-22T11:05:10.305Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -108,23 +108,24 @@ console.log('[Kulbit] 02-app-core.js завантажено');
   // 05 — Створення Observer (один жест = один перехід)
   app.setupObserver = () => {
     if (app.observer) app.observer.kill();
-    // На тач-девайсах напрямок свайпу інверсний до колеса: свайп знизу-вгору = гортати ДАЛІ
-    // (як нативний скрол). GSAP Observer шле для тача onUp на свайп угору, тож для
-    // pointer:coarse міняємо знак. Десктоп (колесо, pointer:fine) — без змін.
-    const touchInvert = window.matchMedia('(pointer: coarse)').matches;
-    // Тип вводу: десктоп — ЛИШЕ 'wheel' (колесо/тачпад), без 'pointer' — інакше затиснута ЛКМ +
-    // рух мишею трактувались би як скрол. Тач — 'wheel,touch,pointer' (свайпи).
-    const inputType = touchInvert ? 'wheel,touch,pointer' : 'wheel';
+    // Напрямок визначаємо за ТИПОМ ПОДІЇ, а НЕ за девайсом (надійніше: деякі десктопи хибно
+    // звітують pointer:coarse → тач-інверсія ламала колесо). Колесо — натурально (вниз = далі);
+    // тач-свайп — інверсно (свайп угору = далі, як нативний скрол). 'pointer' НЕ слухаємо —
+    // щоб затиснута ЛКМ + рух мишею не сприймались як скрол (на будь-якому девайсі).
+    const gestureDir = (down, self) => {
+      const isWheel = self.event && self.event.type === 'wheel';
+      return isWheel ? (down ? 1 : -1) : (down ? -1 : 1);
+    };
     app.observer = Observer.create({
       target: window,
-      type: inputType,
+      type: 'wheel,touch',
       tolerance: 10,
       preventDefault: true, // блокуємо нативний скрол — рухаємось ТІЛЬКИ по секціях
-      onDown: (self) => handleGesture(touchInvert ? -1 : 1, self),
-      onUp: (self) => handleGesture(touchInvert ? 1 : -1, self),
+      onDown: (self) => handleGesture(gestureDir(true, self), self),
+      onUp: (self) => handleGesture(gestureDir(false, self), self),
       onStop: () => { flinging = false; prevVel = 0; } // приймаємо новий ввід лише коли все стихло
     });
-    console.log('[Kulbit-Core] Observer створено (snap активний), type:', inputType, 'touchInvert:', touchInvert);
+    console.log('[Kulbit-Core] Observer створено (snap активний), type: wheel,touch; напрямок за подією');
   };
 
   // 06 — Ресайз. У стекінгу (ADR-010) висота 100vh і yPercent самі підлаштовуються під
