@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-22T13:44:03.513Z */
+/* Kulbit Webflow — зібрано 2026-05-22T13:59:26.100Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -252,7 +252,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.mm.add('(max-width: 479px)', () => {             // mobile-портрет ≤479
       app.resetHeroState();
       app.buildTabletHero();
-      // app.buildOurClients('mobile') — пізніше (мобільну хореографію опишемо окремо)
+      app.buildOurClients('mobile');                     // is-our-clients (ADR-013, мобілка: shiftN [2,1,2])
       return () => app.teardownHero();
     });
     // 480-767 — горизонтальна мобілка: hero не будуємо (попап landscape, 06-responsive.js)
@@ -559,21 +559,27 @@ console.log('[Kulbit] 03-sections.js завантажено');
 
     section.isOurClients = true;
 
-    if (mode === 'tablet') {
-      // ТАБЛЕТ: набори — вертикальні колонки; на 6-карткових наборах окремий крок «зсув на 1 картку».
+    if (mode === 'tablet' || mode === 'mobile') {
+      // ТАБЛЕТ/МОБІЛКА: набори — вертикальні колонки; на наборах із зсувом — окремий крок «зсув карток».
+      // Патерн зсувів per-набір (скільки карток зсунути): таблет [1,0,1], мобілка [2,1,2].
+      const shiftN = (mode === 'mobile') ? [2, 1, 2] : [1, 0, 1];
       const cardStep = wraps.map((w) => {
         const c = cardsOf(w);
         return c.length > 1 ? (c[1].getBoundingClientRect().top - c[0].getBoundingClientRect().top) : 0;
       });
-      // Стани: cur — видимий набір; shifts[i] — на скільки карток зсунуто набір i; prog — індекс набору
-      const STAGES = [
-        { cur: 0, shifts: [0, 0, 0], prog: 0 }, // поява: набір 1
-        { cur: 0, shifts: [1, 0, 0], prog: 0 }, // зсув набору 1
-        { cur: 1, shifts: [1, 0, 0], prog: 1 }, // → набір 2 (4 картки)
-        { cur: 2, shifts: [1, 0, 0], prog: 2 }, // → набір 3 + скрамбл текстів
-        { cur: 2, shifts: [1, 0, 1], prog: 2 }  // зсув набору 3
-      ];
+      // Генеруємо стадії з shiftN: поява → (зсув набору i, якщо shiftN[i]>0) → свап до наступного → ...
+      const STAGES = (() => {
+        const arr = [];
+        const acc = new Array(NW).fill(0);
+        arr.push({ cur: 0, shifts: acc.slice() });                                          // поява: набір 1
+        for (let i = 0; i < NW; i++) {
+          if ((shiftN[i] || 0) > 0) { acc[i] = shiftN[i]; arr.push({ cur: i, shifts: acc.slice() }); } // зсув набору i
+          if (i < NW - 1) arr.push({ cur: i + 1, shifts: acc.slice() });                    // → наступний набір
+        }
+        return arr;
+      })();
       const MAXST = STAGES.length - 1;
+      const scrIdx = STAGES.findIndex((s) => s.cur === NW - 1); // поява останнього набору → перепис текстів
       const applyStage = (s, animate) => {
         const d = STAGES[s];
         wraps.forEach((w, i) => {
@@ -582,14 +588,14 @@ console.log('[Kulbit] 03-sections.js завантажено');
           if (animate) { gsap.to(w, { yPercent: yp, duration: STEP, ease: EASE }); gsap.to(cardsOf(w), { y: cy, duration: STEP, ease: EASE }); }
           else { gsap.set(w, { yPercent: yp }); gsap.set(cardsOf(w), { y: cy }); }
         });
-        setFill(d.prog, animate);
+        setFill(d.cur, animate); // прогрес за індексом видимого набору
       };
       let stage = 0;
       applyStage(0, false); setTexts(false); prepareCommon(); // старт: прихований стан до появи
       section.oc = {
         get state() { return stage; },
         prepare() { stage = 0; applyStage(0, false); setTexts(false); prepareCommon(); },
-        reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= 3); showCommon(); },
+        reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= scrIdx); showCommon(); },
         enter() { stage = 0; applyStage(0, false); enterCommon(); },
         dispose() { disarmHeads(); },
         step(dir) {
@@ -599,12 +605,12 @@ console.log('[Kulbit] 03-sections.js завантажено');
           app.isAnimating = true;
           applyStage(stage, true);
           gsap.delayedCall(STEP, () => { app.isAnimating = false; });
-          if (prev === 2 && stage === 3) morphTexts(true);
-          if (prev === 3 && stage === 2) morphTexts(false);
+          if (prev < scrIdx && stage >= scrIdx) morphTexts(true);   // перепис на появі останнього набору
+          if (prev >= scrIdx && stage < scrIdx) morphTexts(false);  // назад → оригінал
           return true;
         }
       };
-      console.log('[Kulbit-OC] tablet готовий, наборів:', NW);
+      console.log('[Kulbit-OC]', mode, 'готовий: наборів', NW, '| shiftN', shiftN.join(','), '| стадій', STAGES.length);
     } else {
       // ДЕСКТОП: простий вертикальний свап наборів (3 стани).
       const setCards = (s, animate) => wraps.forEach((w, i) => {
