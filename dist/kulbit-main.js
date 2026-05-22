@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-21T21:52:47.540Z */
+/* Kulbit Webflow — зібрано 2026-05-21T22:00:27.466Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -107,16 +107,19 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     // (як нативний скрол). GSAP Observer шле для тача onUp на свайп угору, тож для
     // pointer:coarse міняємо знак. Десктоп (колесо, pointer:fine) — без змін.
     const touchInvert = window.matchMedia('(pointer: coarse)').matches;
+    // Тип вводу: десктоп — ЛИШЕ 'wheel' (колесо/тачпад), без 'pointer' — інакше затиснута ЛКМ +
+    // рух мишею трактувались би як скрол. Тач — 'wheel,touch,pointer' (свайпи).
+    const inputType = touchInvert ? 'wheel,touch,pointer' : 'wheel';
     app.observer = Observer.create({
       target: window,
-      type: 'wheel,touch,pointer',
+      type: inputType,
       tolerance: 10,
       preventDefault: true, // блокуємо нативний скрол — рухаємось ТІЛЬКИ по секціях
       onDown: (self) => handleGesture(touchInvert ? -1 : 1, self),
       onUp: (self) => handleGesture(touchInvert ? 1 : -1, self),
       onStop: () => { flinging = false; prevVel = 0; } // приймаємо новий ввід лише коли все стихло
     });
-    console.log('[Kulbit-Core] Observer створено (snap активний), touchInvert:', touchInvert);
+    console.log('[Kulbit-Core] Observer створено (snap активний), type:', inputType, 'touchInvert:', touchInvert);
   };
 
   // 06 — Ресайз. У стекінгу (ADR-010) висота 100vh і yPercent самі підлаштовуються під
