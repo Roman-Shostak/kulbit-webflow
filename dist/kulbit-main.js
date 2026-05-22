@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-22T13:34:36.281Z */
+/* Kulbit Webflow — зібрано 2026-05-22T13:44:03.513Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -496,16 +496,6 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
       return targets;
     };
-    // Скрамбл-IN на місці: фіксуємо висоту + overflow:hidden (щоб тимчасовий зайвий рядок при
-    // ширших символах скрамблу не змінював висоту H2), потім відновлюємо точний HTML.
-    const scrambleIn = (e, dur) => {
-      const original = e.innerHTML;
-      e.style.height = e.offsetHeight + 'px';
-      e.style.overflow = 'hidden';
-      const targets = buildSegDOM(e, parseSegments(e), false);
-      const tl = gsap.timeline({ onComplete: () => { e.innerHTML = original; e.style.height = ''; e.style.overflow = ''; } });
-      targets.forEach(([s, t]) => tl.to(s, { duration: dur, scrambleText: { text: t, ...SC() } }, 0));
-    };
     const morphParagraph = (p, segs) => {
       gsap.killTweensOf(p);
       gsap.to(p, {
@@ -526,37 +516,46 @@ console.log('[Kulbit] 03-sections.js завантажено');
     // Заголовки (H2/label): під час наїзду секції приховані (autoAlpha 0); скрамбл-поява —
     // лише на повному накритті (коли секція торкнулась верху екрана). Прогрес — так само.
     const heads = [h2, label].filter(Boolean);
-    // Скрамбл заголовка спрацьовує, КОЛИ ТЕКСТ СТАЄ ВИДНО на екрані (IntersectionObserver),
-    // а не на повному накритті. На накритті (enterCommon) — лише фолбек, якщо IO не встиг.
-    let headIO = null;
-    let headFired = new Set();
-    const scrambleHead = (e) => {
-      if (headFired.has(e)) return;
-      headFired.add(e);
-      gsap.set(e, { autoAlpha: 1 });
-      scrambleIn(e, 1.2);
+    // Скрамбл заголовків КЕРУЄТЬСЯ ВИДИМІСТЮ У ВЬЮПОРТІ (незалежно від кроків OC):
+    //   зʼявився у вьюпорті → скрамбл-IN (порожньо→текст); зник → скрамбл-OUT (текст→порожньо);
+    //   знову зʼявився → знову IN. IO не реагує на просте накриття сусідньою секцією (лише на
+    //   реальний вихід із вьюпорта). Висота заголовка зафіксована + overflow:hidden (стабільність).
+    const makeHeadCtrl = (e) => {
+      e.style.height = ''; e.style.overflow = '';                // скинути перед виміром (перебудова брейкпоінта)
+      const targets = buildSegDOM(e, parseSegments(e), true);    // сегментовані спани з текстом (кольори збережено)
+      e.style.height = e.offsetHeight + 'px';                    // фіксуємо повну висоту (стабільно при скрамблі)
+      e.style.overflow = 'hidden';
+      let shown = true, tl = null;
+      const animateTo = (show) => {
+        if (tl) tl.kill();
+        tl = gsap.timeline();
+        targets.forEach(([s, t]) => tl.to(s, { duration: 1.2, scrambleText: { text: show ? t : '', ...SC() } }, 0));
+        shown = show;
+      };
+      return {
+        el: e,
+        show() { if (!shown) animateTo(true); },
+        hide() { if (shown) animateTo(false); },
+        setOut() { if (tl) tl.kill(); targets.forEach(([s]) => { s.textContent = ''; }); shown = false; }
+      };
     };
-    const disarmHeads = () => { if (headIO) { headIO.disconnect(); headIO = null; } };
-    const armHeads = () => {
-      disarmHeads();
-      headFired = new Set();
-      if (!heads.length) return;
-      headIO = new IntersectionObserver((entries) => {
-        entries.forEach((en) => { if (en.isIntersecting) scrambleHead(en.target); });
-      }, { threshold: 0.9 });
-      heads.forEach((e) => headIO.observe(e));
-    };
-    const prepareCommon = () => {                 // під час наїзду: заголовки приховані, прогрес ПЛАВНО→0
-      heads.forEach((e) => gsap.set(e, { autoAlpha: 0 }));
-      armHeads();                                 // озброюємо IO — скрамбл, щойно текст стане видно
-      if (fill) gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); // плавне зменшення (не різко)
-    };
-    const enterCommon = () => {                   // на повному накритті: прогрес 0→1/3 (+ фолбек скрамблу)
-      if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); }
-      setFill(0, true);
-      heads.forEach(scrambleHead);                // якщо IO не спрацював раніше — скрамбл тут
-    };
-    const showCommon = () => { disarmHeads(); heads.forEach((e) => { headFired.add(e); gsap.set(e, { autoAlpha: 1 }); }); }; // миттєво показати (вхід знизу)
+    const headCtrls = heads.map(makeHeadCtrl);
+    headCtrls.forEach((c) => c.setOut()); // старт: порожньо (зʼявляться скрамблом при вході у вьюпорт)
+    const headIO = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        const c = headCtrls.find((x) => x.el === en.target);
+        if (!c) return;
+        if (en.intersectionRatio >= 0.6) c.show();   // зʼявився достатньо → IN
+        else if (!en.isIntersecting) c.hide();        // повністю вийшов → OUT
+      });
+    }, { threshold: [0, 0.6] });
+    headCtrls.forEach((c) => headIO.observe(c.el));
+    const disarmHeads = () => headIO.disconnect();
+
+    // Прогрес (заголовки керуються IO незалежно)
+    const prepareCommon = () => { if (fill) gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); }; // плавно→0 (реверс)
+    const enterCommon = () => { if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); } setFill(0, true); }; // 0→1/3
+    const showCommon = () => {}; // заголовки керуються IO; тут нічого
 
     section.isOurClients = true;
 
