@@ -110,6 +110,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.sections.forEach((s) => {
       s.timeline = null; s.isAnimated = false;
       s.tabletTL = null; s.isTabletHero = false;
+      if (s.oc && s.oc.dispose) s.oc.dispose(); // прибрати IntersectionObserver (ADR-013)
       s.oc = null; s.isOurClients = false;
     });
     console.log('[Kulbit-Anim] teardown hero (зміна брейкпоінта)');
@@ -360,16 +361,37 @@ console.log('[Kulbit] 03-sections.js завантажено');
     // Заголовки (H2/label): під час наїзду секції приховані (autoAlpha 0); скрамбл-поява —
     // лише на повному накритті (коли секція торкнулась верху екрана). Прогрес — так само.
     const heads = [h2, label].filter(Boolean);
-    const prepareCommon = () => {                 // стан під час наїзду
+    // Скрамбл заголовка спрацьовує, КОЛИ ТЕКСТ СТАЄ ВИДНО на екрані (IntersectionObserver),
+    // а не на повному накритті. На накритті (enterCommon) — лише фолбек, якщо IO не встиг.
+    let headIO = null;
+    let headFired = new Set();
+    const scrambleHead = (e) => {
+      if (headFired.has(e)) return;
+      headFired.add(e);
+      gsap.set(e, { autoAlpha: 1 });
+      scrambleIn(e, 1.2);
+    };
+    const disarmHeads = () => { if (headIO) { headIO.disconnect(); headIO = null; } };
+    const armHeads = () => {
+      disarmHeads();
+      headFired = new Set();
+      if (!heads.length) return;
+      headIO = new IntersectionObserver((entries) => {
+        entries.forEach((en) => { if (en.isIntersecting) scrambleHead(en.target); });
+      }, { threshold: 0.9 });
+      heads.forEach((e) => headIO.observe(e));
+    };
+    const prepareCommon = () => {                 // під час наїзду: заголовки приховані, прогрес ПЛАВНО→0
       heads.forEach((e) => gsap.set(e, { autoAlpha: 0 }));
-      if (fill) gsap.set(fill, { width: '0%' });
+      armHeads();                                 // озброюємо IO — скрамбл, щойно текст стане видно
+      if (fill) gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); // плавне зменшення (не різко)
     };
-    const enterCommon = () => {                   // на повному накритті: прогрес 0→1/3 + скрамбл заголовків
-      if (fill) gsap.set(fill, { width: '0%' });
+    const enterCommon = () => {                   // на повному накритті: прогрес 0→1/3 (+ фолбек скрамблу)
+      if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); }
       setFill(0, true);
-      heads.forEach((e) => { gsap.set(e, { autoAlpha: 1 }); scrambleIn(e, 1.2); });
+      heads.forEach(scrambleHead);                // якщо IO не спрацював раніше — скрамбл тут
     };
-    const showCommon = () => heads.forEach((e) => gsap.set(e, { autoAlpha: 1 })); // миттєво показати (вхід знизу)
+    const showCommon = () => { disarmHeads(); heads.forEach((e) => { headFired.add(e); gsap.set(e, { autoAlpha: 1 }); }); }; // миттєво показати (вхід знизу)
 
     section.isOurClients = true;
 
@@ -405,6 +427,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         prepare() { stage = 0; applyStage(0, false); setTexts(false); prepareCommon(); },
         reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= 3); showCommon(); },
         enter() { stage = 0; applyStage(0, false); enterCommon(); },
+        dispose() { disarmHeads(); },
         step(dir) {
           const ns = Math.max(0, Math.min(MAXST, stage + dir));
           if (ns === stage) return false;
@@ -432,6 +455,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         prepare() { state = 0; setCards(0, false); setTexts(false); prepareCommon(); },
         reset(toEnd) { state = toEnd ? NW - 1 : 0; setCards(state, false); setFill(state, false); setTexts(state === NW - 1); showCommon(); },
         enter() { state = 0; setCards(0, false); enterCommon(); },
+        dispose() { disarmHeads(); },
         step(dir) {
           const ns = Math.max(0, Math.min(NW - 1, state + dir));
           if (ns === state) return false;
