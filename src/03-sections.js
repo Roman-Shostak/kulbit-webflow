@@ -72,20 +72,24 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (app.mm) app.mm.kill();         // якщо колись перевикликають — прибрати старий matchMedia
     app.mm = gsap.matchMedia();
 
-    const buildTablet = () => {        // спільна гілка для tablet і mobile (однакова хореографія)
-      app.resetHeroState();
-      app.buildTabletHero();
-      return () => app.teardownHero();
-    };
-
     app.mm.add('(min-width: 992px)', () => {              // desktop ≥992
       app.resetHeroState();
       app.buildDesktopAnimations();
-      app.buildOurClients();                             // секція is-our-clients (ADR-013, поки лише десктоп)
+      app.buildOurClients('desktop');                    // is-our-clients (ADR-013)
       return () => app.teardownHero();
     });
-    app.mm.add('(min-width: 768px) and (max-width: 991px)', buildTablet); // tablet 768-991
-    app.mm.add('(max-width: 479px)', buildTablet);                        // mobile-портрет ≤479
+    app.mm.add('(min-width: 768px) and (max-width: 991px)', () => {       // tablet 768-991
+      app.resetHeroState();
+      app.buildTabletHero();
+      app.buildOurClients('tablet');                     // is-our-clients (ADR-013, таблет)
+      return () => app.teardownHero();
+    });
+    app.mm.add('(max-width: 479px)', () => {             // mobile-портрет ≤479
+      app.resetHeroState();
+      app.buildTabletHero();
+      // app.buildOurClients('mobile') — пізніше (мобільну хореографію опишемо окремо)
+      return () => app.teardownHero();
+    });
     // 480-767 — горизонтальна мобілка: hero не будуємо (попап landscape, 06-responsive.js)
 
     console.log('[Kulbit-Anim] matchMedia активний (брейкпоінти 992/768/479, динамічна перебудова)');
@@ -243,11 +247,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     return false; // решта — стандартний стекінг
   };
 
-  // 03d — Секція is-our-clients (ДЕСКТОП, ADR-013): 3 набори карток (вертикальний свап) +
-  //   прогрес-бар + скрамбл текстів. Поява секції → прогрес 0→1/3 + скрамбл H2/label; кроки →
-  //   набори 2,3 (на 3-му перепис обох параграфів); після 3-го наступний скрол = наступна секція.
-  //   Стан і методи живуть у section.oc; advance/goToSection делегують на них.
-  app.buildOurClients = () => {
+  // 03d — Секція is-our-clients (ADR-013): 3 набори карток + прогрес-бар + скрамбл текстів.
+  //   mode='desktop' — вертикальний свап наборів (3 стани).
+  //   mode='tablet'  — те саме + ВНУТРІШНІЙ зсув карток на 6-карткових наборах (окремі кроки):
+  //     зсув набору1 → набір2 → набір3+скрамбл → зсув набору3 → наступна секція.
+  //   Спільні: прогрес (трек 15% / лінія 100%, по наборах), скрамбл H2/label на появі,
+  //   перепис параграфів на наборі 3. Стан/методи — у section.oc; advance/goToSection делегують.
+  app.buildOurClients = (mode) => {
     const section = app.sections.find((s) => s.el.classList.contains('is-our-clients'));
     if (!section) return;
     const el = section.el;
@@ -258,12 +264,12 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const paraWraps = [...el.querySelectorAll('.our-clients-text-content .width-193')];
     const h2 = el.querySelector('.text-size-section-h2');
     const label = el.querySelector('.text-size-section-label');
+    const cardsOf = (w) => [...w.querySelectorAll('.our-clients-card')];
 
     const STEP = app.config.scrollDuration, EASE = app.config.ease;
     const SC = (chars, speed) => ({ chars: chars || 'upperCase', speed: speed || 1 });
-    const MAX = wraps.length - 1;
+    const NW = wraps.length;
 
-    // Нові тексти параграфів (RAW з пробілами; пробіл стане статичним розділювачем між спанами)
     const TXT = [
       { orig: [['Brand work', 'text-color-black-20'], [' trusted by industry leaders.', '']],
         next: [['Festival-recognized cinematic work.', 'text-color-black-20']] },
@@ -285,7 +291,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       gsap.set(fill, { width: '0%' });
     }
 
-    // — Скрамбл-утиліти —
+    // — Скрамбл-утиліти (спільні) —
     const parseSegments = (e) => {
       const segs = [];
       e.childNodes.forEach((n) => {
@@ -294,7 +300,6 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
       return segs;
     };
-    // Порожні (або заповнені) спани + статичні пробіли між ними; повертає [span, цільовий-текст]
     const buildSegDOM = (c, segs, fillText) => {
       c.textContent = '';
       const targets = [];
@@ -316,15 +321,16 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
       return targets;
     };
-    // Скрамбл-IN на місці (текст не міняється): порожньо → написати → відновити точний HTML
+    // Скрамбл-IN на місці: фіксуємо висоту + overflow:hidden (щоб тимчасовий зайвий рядок при
+    // ширших символах скрамблу не змінював висоту H2), потім відновлюємо точний HTML.
     const scrambleIn = (e, dur) => {
       const original = e.innerHTML;
       e.style.height = e.offsetHeight + 'px';
+      e.style.overflow = 'hidden';
       const targets = buildSegDOM(e, parseSegments(e), false);
-      const tl = gsap.timeline({ onComplete: () => { e.innerHTML = original; e.style.height = ''; } });
+      const tl = gsap.timeline({ onComplete: () => { e.innerHTML = original; e.style.height = ''; e.style.overflow = ''; } });
       targets.forEach(([s, t]) => tl.to(s, { duration: dur, scrambleText: { text: t, ...SC() } }, 0));
     };
-    // Перепис параграфа: стерти все → нові сегменти → написати скрамблом
     const morphParagraph = (p, segs) => {
       gsap.killTweensOf(p);
       gsap.to(p, {
@@ -333,60 +339,98 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
     };
     const morphTexts = (toNext) => paras.forEach((p, i) => morphParagraph(p, toNext ? TXT[i].next : TXT[i].orig));
-    const setTexts = (toNext) => paras.forEach((p, i) => buildSegDOM(p, toNext ? TXT[i].next : TXT[i].orig, true)); // миттєво, без скрамблу
+    const setTexts = (toNext) => paras.forEach((p, i) => buildSegDOM(p, toNext ? TXT[i].next : TXT[i].orig, true));
 
-    // — Свап наборів + заповнення прогресу —
-    const setCards = (s, animate) => wraps.forEach((w, i) => {
-      const y = i < s ? -100 : (i > s ? 100 : 0);
-      if (animate) gsap.to(w, { yPercent: y, duration: STEP, ease: EASE });
-      else gsap.set(w, { yPercent: y });
-    });
-    const setFill = (s, animate) => {
+    // Прогрес за індексом набору (0..NW-1)
+    const setFill = (prog, animate) => {
       if (!fill) return;
-      const w = ((s + 1) / wraps.length * 100) + '%';
+      const w = ((prog + 1) / NW * 100) + '%';
       if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
       else gsap.set(fill, { width: w });
     };
-
-    let state = 0;
-    setCards(0, false);
-    setTexts(false);
+    // Спільна поява згори (прогрес 0→1/3 + скрамбл H2/label)
+    const enterCommon = () => {
+      setTexts(false);
+      if (fill) gsap.set(fill, { width: '0%' });
+      setFill(0, true);
+      if (h2) scrambleIn(h2, 1.2);
+      if (label) scrambleIn(label, 1.2);
+    };
 
     section.isOurClients = true;
-    section.oc = {
-      get state() { return state; },
-      // Миттєвий стан при вході знизу (toEnd=true → набір 3, прогрес повний, тексти next)
-      reset(toEnd) {
-        state = toEnd ? MAX : 0;
-        setCards(state, false);
-        setFill(state, false);
-        setTexts(state === MAX);
-      },
-      // Поява згори: прогрес 0→1/3, набір 1, скрамбл H2 + label (зберігаючи спани)
-      enter() {
-        state = 0;
-        setCards(0, false);
-        setTexts(false);
-        if (fill) gsap.set(fill, { width: '0%' });
-        setFill(0, true);
-        if (h2) scrambleIn(h2, 1.2);
-        if (label) scrambleIn(label, 1.2);
-      },
-      // Крок усередині секції; true якщо оброблено (false → межа, далі сусідня секція)
-      step(dir) {
-        const ns = Math.max(0, Math.min(MAX, state + dir));
-        if (ns === state) return false;
-        const prev = state; state = ns;
-        app.isAnimating = true;
-        setCards(state, true);
-        setFill(state, true);
-        gsap.delayedCall(STEP, () => { app.isAnimating = false; });
-        if (prev === 1 && state === 2) morphTexts(true);   // у набір 3 → новий текст
-        if (prev === 2 && state === 1) morphTexts(false);  // назад → оригінал
-        return true;
-      }
-    };
-    console.log('[Kulbit-OC] desktop готовий, наборів:', wraps.length);
+
+    if (mode === 'tablet') {
+      // ТАБЛЕТ: набори — вертикальні колонки; на 6-карткових наборах окремий крок «зсув на 1 картку».
+      const cardStep = wraps.map((w) => {
+        const c = cardsOf(w);
+        return c.length > 1 ? (c[1].getBoundingClientRect().top - c[0].getBoundingClientRect().top) : 0;
+      });
+      // Стани: cur — видимий набір; shifts[i] — на скільки карток зсунуто набір i; prog — індекс набору
+      const STAGES = [
+        { cur: 0, shifts: [0, 0, 0], prog: 0 }, // поява: набір 1
+        { cur: 0, shifts: [1, 0, 0], prog: 0 }, // зсув набору 1
+        { cur: 1, shifts: [1, 0, 0], prog: 1 }, // → набір 2 (4 картки)
+        { cur: 2, shifts: [1, 0, 0], prog: 2 }, // → набір 3 + скрамбл текстів
+        { cur: 2, shifts: [1, 0, 1], prog: 2 }  // зсув набору 3
+      ];
+      const MAXST = STAGES.length - 1;
+      const applyStage = (s, animate) => {
+        const d = STAGES[s];
+        wraps.forEach((w, i) => {
+          const yp = i < d.cur ? -100 : (i > d.cur ? 100 : 0);
+          const cy = -d.shifts[i] * cardStep[i];
+          if (animate) { gsap.to(w, { yPercent: yp, duration: STEP, ease: EASE }); gsap.to(cardsOf(w), { y: cy, duration: STEP, ease: EASE }); }
+          else { gsap.set(w, { yPercent: yp }); gsap.set(cardsOf(w), { y: cy }); }
+        });
+        setFill(d.prog, animate);
+      };
+      let stage = 0;
+      applyStage(0, false); setTexts(false);
+      section.oc = {
+        get state() { return stage; },
+        reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= 3); },
+        enter() { stage = 0; applyStage(0, false); enterCommon(); },
+        step(dir) {
+          const ns = Math.max(0, Math.min(MAXST, stage + dir));
+          if (ns === stage) return false;
+          const prev = stage; stage = ns;
+          app.isAnimating = true;
+          applyStage(stage, true);
+          gsap.delayedCall(STEP, () => { app.isAnimating = false; });
+          if (prev === 2 && stage === 3) morphTexts(true);
+          if (prev === 3 && stage === 2) morphTexts(false);
+          return true;
+        }
+      };
+      console.log('[Kulbit-OC] tablet готовий, наборів:', NW);
+    } else {
+      // ДЕСКТОП: простий вертикальний свап наборів (3 стани).
+      const setCards = (s, animate) => wraps.forEach((w, i) => {
+        const y = i < s ? -100 : (i > s ? 100 : 0);
+        if (animate) gsap.to(w, { yPercent: y, duration: STEP, ease: EASE });
+        else gsap.set(w, { yPercent: y });
+      });
+      let state = 0;
+      setCards(0, false); setTexts(false);
+      section.oc = {
+        get state() { return state; },
+        reset(toEnd) { state = toEnd ? NW - 1 : 0; setCards(state, false); setFill(state, false); setTexts(state === NW - 1); },
+        enter() { state = 0; setCards(0, false); enterCommon(); },
+        step(dir) {
+          const ns = Math.max(0, Math.min(NW - 1, state + dir));
+          if (ns === state) return false;
+          const prev = state; state = ns;
+          app.isAnimating = true;
+          setCards(state, true);
+          setFill(state, true);
+          gsap.delayedCall(STEP, () => { app.isAnimating = false; });
+          if (prev === 1 && state === 2) morphTexts(true);
+          if (prev === 2 && state === 1) morphTexts(false);
+          return true;
+        }
+      };
+      console.log('[Kulbit-OC] desktop готовий, наборів:', NW);
+    }
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
