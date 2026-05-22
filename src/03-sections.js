@@ -33,7 +33,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
         isFooter: el.classList.contains('footer'),
         steps: [], isStepped: false,        // reveal-кроки
         timeline: null, isAnimated: false,  // кастомний таймлайн desktop (ADR-009)
-        tabletTL: null, isTabletHero: false // спец таблет-hero (ADR-011)
+        tabletTL: null, isTabletHero: false, // спец таблет-hero (ADR-011)
+        oc: null, isOurClients: false        // спец секція is-our-clients (ADR-013)
       };
     });
 
@@ -80,6 +81,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.mm.add('(min-width: 992px)', () => {              // desktop ≥992
       app.resetHeroState();
       app.buildDesktopAnimations();
+      app.buildOurClients();                             // секція is-our-clients (ADR-013, поки лише десктоп)
       return () => app.teardownHero();
     });
     app.mm.add('(min-width: 768px) and (max-width: 991px)', buildTablet); // tablet 768-991
@@ -104,6 +106,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.sections.forEach((s) => {
       s.timeline = null; s.isAnimated = false;
       s.tabletTL = null; s.isTabletHero = false;
+      s.oc = null; s.isOurClients = false;
     });
     console.log('[Kulbit-Anim] teardown hero (зміна брейкпоінта)');
   };
@@ -240,6 +243,152 @@ console.log('[Kulbit] 03-sections.js завантажено');
     return false; // решта — стандартний стекінг
   };
 
+  // 03d — Секція is-our-clients (ДЕСКТОП, ADR-013): 3 набори карток (вертикальний свап) +
+  //   прогрес-бар + скрамбл текстів. Поява секції → прогрес 0→1/3 + скрамбл H2/label; кроки →
+  //   набори 2,3 (на 3-му перепис обох параграфів); після 3-го наступний скрол = наступна секція.
+  //   Стан і методи живуть у section.oc; advance/goToSection делегують на них.
+  app.buildOurClients = () => {
+    const section = app.sections.find((s) => s.el.classList.contains('is-our-clients'));
+    if (!section) return;
+    const el = section.el;
+    const wraps = [...el.querySelectorAll('.our-client-card-wrapper')];
+    if (wraps.length < 2) { console.warn('[Kulbit-OC] замало наборів карток'); return; }
+    const bar = el.querySelector('.section-progresbar');
+    const paras = [...el.querySelectorAll('.our-clients-text-content .width-193 p')];
+    const paraWraps = [...el.querySelectorAll('.our-clients-text-content .width-193')];
+    const h2 = el.querySelector('.text-size-section-h2');
+    const label = el.querySelector('.text-size-section-label');
+
+    const STEP = app.config.scrollDuration, EASE = app.config.ease;
+    const SC = (chars, speed) => ({ chars: chars || 'upperCase', speed: speed || 1 });
+    const MAX = wraps.length - 1;
+
+    // Нові тексти параграфів (RAW з пробілами; пробіл стане статичним розділювачем між спанами)
+    const TXT = [
+      { orig: [['Brand work', 'text-color-black-20'], [' trusted by industry leaders.', '']],
+        next: [['Festival-recognized cinematic work.', 'text-color-black-20']] },
+      { orig: [['Partnerships at', 'text-color-black-20'], [' scale and quality.', '']],
+        next: [['Honored by', 'text-color-black-20'], [' leading international film festivals.', '']] }
+    ];
+
+    // Фіксуємо висоту обгорток параграфів — щоб абсолютний елемент не з'їжджав при стиранні
+    paraWraps.forEach((w) => { w.style.height = ''; w.style.height = w.offsetHeight + 'px'; });
+
+    // Прогрес-бар: трек 15% + дочірня лінія-заповнення 100%
+    let fill = null;
+    if (bar) {
+      bar.style.position = 'relative';
+      bar.style.backgroundColor = 'rgba(253, 252, 252, 0.15)';
+      fill = bar.querySelector('.oc-fill');
+      if (!fill) { fill = document.createElement('div'); fill.className = 'oc-fill'; bar.appendChild(fill); }
+      Object.assign(fill.style, { position: 'absolute', left: '0', top: '0', height: '100%', width: '0%', backgroundColor: '#fdfcfc' });
+      gsap.set(fill, { width: '0%' });
+    }
+
+    // — Скрамбл-утиліти —
+    const parseSegments = (e) => {
+      const segs = [];
+      e.childNodes.forEach((n) => {
+        if (n.nodeType === 3) segs.push([n.textContent, '']);
+        else if (n.nodeType === 1) segs.push([n.textContent, n.getAttribute('class') || '']);
+      });
+      return segs;
+    };
+    // Порожні (або заповнені) спани + статичні пробіли між ними; повертає [span, цільовий-текст]
+    const buildSegDOM = (c, segs, fillText) => {
+      c.textContent = '';
+      const targets = [];
+      let pend = false;
+      segs.forEach(([raw, cls]) => {
+        const lead = /^\s/.test(raw), trail = /\s$/.test(raw);
+        const t = raw.replace(/\s+/g, ' ').trim();
+        if (lead) pend = true;
+        if (t) {
+          if (pend) c.appendChild(document.createTextNode(' '));
+          pend = false;
+          const s = document.createElement('span');
+          if (cls) s.className = cls;
+          if (fillText) s.textContent = t;
+          c.appendChild(s);
+          targets.push([s, t]);
+        }
+        if (trail) pend = true;
+      });
+      return targets;
+    };
+    // Скрамбл-IN на місці (текст не міняється): порожньо → написати → відновити точний HTML
+    const scrambleIn = (e, dur) => {
+      const original = e.innerHTML;
+      e.style.height = e.offsetHeight + 'px';
+      const targets = buildSegDOM(e, parseSegments(e), false);
+      const tl = gsap.timeline({ onComplete: () => { e.innerHTML = original; e.style.height = ''; } });
+      targets.forEach(([s, t]) => tl.to(s, { duration: dur, scrambleText: { text: t, ...SC() } }, 0));
+    };
+    // Перепис параграфа: стерти все → нові сегменти → написати скрамблом
+    const morphParagraph = (p, segs) => {
+      gsap.killTweensOf(p);
+      gsap.to(p, {
+        duration: 0.35, scrambleText: { text: '', ...SC('upperCase', 3) },
+        onComplete: () => buildSegDOM(p, segs, false).forEach(([s, t]) => gsap.to(s, { duration: 0.6, scrambleText: { text: t, ...SC() } }))
+      });
+    };
+    const morphTexts = (toNext) => paras.forEach((p, i) => morphParagraph(p, toNext ? TXT[i].next : TXT[i].orig));
+    const setTexts = (toNext) => paras.forEach((p, i) => buildSegDOM(p, toNext ? TXT[i].next : TXT[i].orig, true)); // миттєво, без скрамблу
+
+    // — Свап наборів + заповнення прогресу —
+    const setCards = (s, animate) => wraps.forEach((w, i) => {
+      const y = i < s ? -100 : (i > s ? 100 : 0);
+      if (animate) gsap.to(w, { yPercent: y, duration: STEP, ease: EASE });
+      else gsap.set(w, { yPercent: y });
+    });
+    const setFill = (s, animate) => {
+      if (!fill) return;
+      const w = ((s + 1) / wraps.length * 100) + '%';
+      if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
+      else gsap.set(fill, { width: w });
+    };
+
+    let state = 0;
+    setCards(0, false);
+    setTexts(false);
+
+    section.isOurClients = true;
+    section.oc = {
+      get state() { return state; },
+      // Миттєвий стан при вході знизу (toEnd=true → набір 3, прогрес повний, тексти next)
+      reset(toEnd) {
+        state = toEnd ? MAX : 0;
+        setCards(state, false);
+        setFill(state, false);
+        setTexts(state === MAX);
+      },
+      // Поява згори: прогрес 0→1/3, набір 1, скрамбл H2 + label (зберігаючи спани)
+      enter() {
+        state = 0;
+        setCards(0, false);
+        setTexts(false);
+        if (fill) gsap.set(fill, { width: '0%' });
+        setFill(0, true);
+        if (h2) scrambleIn(h2, 1.2);
+        if (label) scrambleIn(label, 1.2);
+      },
+      // Крок усередині секції; true якщо оброблено (false → межа, далі сусідня секція)
+      step(dir) {
+        const ns = Math.max(0, Math.min(MAX, state + dir));
+        if (ns === state) return false;
+        const prev = state; state = ns;
+        app.isAnimating = true;
+        setCards(state, true);
+        setFill(state, true);
+        gsap.delayedCall(STEP, () => { app.isAnimating = false; });
+        if (prev === 1 && state === 2) morphTexts(true);   // у набір 3 → новий текст
+        if (prev === 2 && state === 1) morphTexts(false);  // назад → оригінал
+        return true;
+      }
+    };
+    console.log('[Kulbit-OC] desktop готовий, наборів:', wraps.length);
+  };
+
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
   //      Початковий стан (крок 0) виставляється gsap.set; крок 1 — це кінець таймлайну.
   //      Фази задаються data-kulbit-order (0 — перша, далі — послідовно). Без order — усе разом.
@@ -352,7 +501,9 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const target = app.sections[clamped];
 
     // Стан кроків/таймлайну нової секції
-    if (target.isAnimated && target.timeline) {
+    if (target.isOurClients && target.oc) {
+      app.currentStep = 0; // власний стан — у target.oc (виставляємо в instant/animated нижче)
+    } else if (target.isAnimated && target.timeline) {
       const atEnd = dir < 0;                       // вхід знизу → таймлайн у кінці
       target.timeline.progress(atEnd ? 1 : 0).pause();
       app.currentStep = atEnd ? 1 : 0;
@@ -367,6 +518,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (instant) {
       app.currentSectionIndex = clamped;
       app.applyStackingPositions();
+      if (target.isOurClients && target.oc) target.oc.reset(dir < 0); // миттєвий стан секції
       if (app.updateVideoVisibility) app.updateVideoVisibility();
       return;
     }
@@ -383,6 +535,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     };
     if (dir > 0) {
       // вниз: ціль наповзає знизу поверх поточної
+      if (target.isOurClients && target.oc) target.oc.enter(); // поява: прогрес 0→1/3 + скрамбл заголовків
       gsap.to(target.el, {
         yPercent: 0,
         duration: app.config.scrollDuration, ease: app.config.ease,
@@ -390,6 +543,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
     } else {
       // вгору: поточна сповзає вниз, відкриваючи попередню
+      if (target.isOurClients && target.oc) target.oc.reset(true); // секцію відкривають на набір 3 (кінець)
       gsap.to(app.sections[prev].el, {
         yPercent: 100,
         duration: app.config.scrollDuration, ease: app.config.ease,
@@ -407,6 +561,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (hero && hero.isTabletHero && app.tabletHeroStep(dir)) return;
 
     const section = app.sections[app.currentSectionIndex];
+
+    // is-our-clients (ADR-013, десктоп): покрокова хореографія всередині секції
+    if (section.isOurClients && section.oc) {
+      if (section.oc.step(dir)) return;                       // крок усередині оброблено
+      app.goToSection(app.currentSectionIndex + dir, false, dir); // межа → сусідня секція
+      return;
+    }
 
     // Кастомний таймлайн desktop (hero): крок 0 ↔ 1
     if (section.isAnimated && section.timeline) {

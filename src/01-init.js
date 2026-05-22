@@ -23,5 +23,10 @@ console.log('[Kulbit] 01-init.js завантажено');
     gsap.registerPlugin(ScrollTrigger);
   }
 
+  // 04 — ScrambleText — для скрамбл-ефекту текстів (секція is-our-clients)
+  if (typeof ScrambleTextPlugin !== 'undefined') {
+    gsap.registerPlugin(ScrambleTextPlugin);
+  }
+
   console.log('[Kulbit-Init] ✅ Плагіни зареєстровано (Observer)');
 })();
