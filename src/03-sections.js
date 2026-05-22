@@ -227,8 +227,12 @@ console.log('[Kulbit] 03-sections.js завантажено');
         const ns = app.currentStep + 1;
         tl.tweenTo(labels[ns], { onComplete: () => {
           app.isAnimating = false;
-          if (ns === MAX) { app.currentSectionIndex = 1; app.currentStep = 0; if (app.updateVideoVisibility) app.updateVideoVisibility(); }
-          else app.currentStep = ns;
+          if (ns === MAX) {
+            app.currentSectionIndex = 1; app.currentStep = 0;
+            if (app.updateVideoVisibility) app.updateVideoVisibility();
+            const s1 = app.sections[1]; // секція 1 (is-our-clients) накрила — запускаємо її появу
+            if (s1 && s1.isOurClients && s1.oc) s1.oc.enter();
+          } else app.currentStep = ns;
         } });
       } else if (dir < 0 && app.currentStep > 0) {
         app.isAnimating = true;
@@ -237,9 +241,14 @@ console.log('[Kulbit] 03-sections.js завантажено');
       }
       return true; // hero повністю під контролем таблет-логіки
     }
-    if (idx === 1 && dir < 0) { // повернення з секції 2 — відмотуємо хореографію hero
+    if (idx === 1 && dir < 0) {
+      const s1 = app.sections[1];
+      // секція 1 = is-our-clients і ще НЕ на старті → хай OC відмотує спершу (advance викличе oc.step)
+      if (s1 && s1.isOurClients && s1.oc && s1.oc.state > 0) return false;
+      // OC на старті (або секція 1 звичайна) → відмотуємо хореографію hero (16:9 повертається)
       app.isAnimating = true;
       app.currentSectionIndex = 0;
+      if (s1 && s1.isOurClients && s1.oc) s1.oc.prepare(); // приховати заголовки/прогрес для наступної появи
       if (app.updateVideoVisibility) app.updateVideoVisibility();
       tl.tweenTo(labels[MAX - 1], { onComplete: () => { app.isAnimating = false; app.currentStep = MAX - 1; } });
       return true;
@@ -348,14 +357,19 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
       else gsap.set(fill, { width: w });
     };
-    // Спільна поява згори (прогрес 0→1/3 + скрамбл H2/label)
-    const enterCommon = () => {
-      setTexts(false);
+    // Заголовки (H2/label): під час наїзду секції приховані (autoAlpha 0); скрамбл-поява —
+    // лише на повному накритті (коли секція торкнулась верху екрана). Прогрес — так само.
+    const heads = [h2, label].filter(Boolean);
+    const prepareCommon = () => {                 // стан під час наїзду
+      heads.forEach((e) => gsap.set(e, { autoAlpha: 0 }));
+      if (fill) gsap.set(fill, { width: '0%' });
+    };
+    const enterCommon = () => {                   // на повному накритті: прогрес 0→1/3 + скрамбл заголовків
       if (fill) gsap.set(fill, { width: '0%' });
       setFill(0, true);
-      if (h2) scrambleIn(h2, 1.2);
-      if (label) scrambleIn(label, 1.2);
+      heads.forEach((e) => { gsap.set(e, { autoAlpha: 1 }); scrambleIn(e, 1.2); });
     };
+    const showCommon = () => heads.forEach((e) => gsap.set(e, { autoAlpha: 1 })); // миттєво показати (вхід знизу)
 
     section.isOurClients = true;
 
@@ -385,10 +399,11 @@ console.log('[Kulbit] 03-sections.js завантажено');
         setFill(d.prog, animate);
       };
       let stage = 0;
-      applyStage(0, false); setTexts(false);
+      applyStage(0, false); setTexts(false); prepareCommon(); // старт: прихований стан до появи
       section.oc = {
         get state() { return stage; },
-        reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= 3); },
+        prepare() { stage = 0; applyStage(0, false); setTexts(false); prepareCommon(); },
+        reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= 3); showCommon(); },
         enter() { stage = 0; applyStage(0, false); enterCommon(); },
         step(dir) {
           const ns = Math.max(0, Math.min(MAXST, stage + dir));
@@ -411,10 +426,11 @@ console.log('[Kulbit] 03-sections.js завантажено');
         else gsap.set(w, { yPercent: y });
       });
       let state = 0;
-      setCards(0, false); setTexts(false);
+      setCards(0, false); setTexts(false); prepareCommon(); // старт: прихований стан до появи
       section.oc = {
         get state() { return state; },
-        reset(toEnd) { state = toEnd ? NW - 1 : 0; setCards(state, false); setFill(state, false); setTexts(state === NW - 1); },
+        prepare() { state = 0; setCards(0, false); setTexts(false); prepareCommon(); },
+        reset(toEnd) { state = toEnd ? NW - 1 : 0; setCards(state, false); setFill(state, false); setTexts(state === NW - 1); showCommon(); },
         enter() { state = 0; setCards(0, false); enterCommon(); },
         step(dir) {
           const ns = Math.max(0, Math.min(NW - 1, state + dir));
@@ -579,11 +595,11 @@ console.log('[Kulbit] 03-sections.js завантажено');
     };
     if (dir > 0) {
       // вниз: ціль наповзає знизу поверх поточної
-      if (target.isOurClients && target.oc) target.oc.enter(); // поява: прогрес 0→1/3 + скрамбл заголовків
+      if (target.isOurClients && target.oc) target.oc.prepare(); // під час наїзду — приховано (прогрес/заголовки)
       gsap.to(target.el, {
         yPercent: 0,
         duration: app.config.scrollDuration, ease: app.config.ease,
-        onComplete: finish
+        onComplete: () => { finish(); if (target.isOurClients && target.oc) target.oc.enter(); } // на повному накритті — поява
       });
     } else {
       // вгору: поточна сповзає вниз, відкриваючи попередню
