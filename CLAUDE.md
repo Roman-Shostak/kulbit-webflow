@@ -236,7 +236,8 @@ kulbit-webflow/
 │   ├── 06-responsive.js         # Респонсив + попап landscape
 │   ├── 07-popup-form.js         # Логіка попап-форми
 │   ├── 08-video.js              # Vimeo bg-відео (cover) + кнопка звуку ([data-kulbit-video]/[data-kulbit-sound])
-│   └── 09-button-border.js      # Ховер: промальовка бордера від точки курсора ([data-kulbit-border])
+│   ├── 09-button-border.js      # Ховер: промальовка бордера від точки курсора ([data-kulbit-border])
+│   └── 10-project-video.js      # Vimeo-плеєр проєктів: cover + кастомні контроли ([data-kulbit-project-video], ADR-014)
 │
 └── dist/                        # Збірка для Webflow (генерується)
     └── kulbit-main.js           # Склеєний файл — підключається в Webflow
@@ -402,7 +403,7 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
 ```
 
-Підставляєш короткий хеш свіжого коміту (напр. `@8a1b3d0`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Останній запушений коміт: `8a1b3d0`** (is-our-clients МОБІЛКА, shiftN [2,1,2]). _Перед ним: `15422ae` (скрамбл за видимістю), `9e1a958` (таблет)._
+Підставляєш короткий хеш свіжого коміту (напр. `@da2ac68`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Останній запушений коміт: `da2ac68`** (10-project-video.js — Vimeo-плеєр проєктів, ADR-014). _Перед ним: `8a1b3d0` (is-our-clients мобілка), `15422ae` (скрамбл за видимістю)._
 
 ### Підключення в Webflow
 
@@ -636,6 +637,25 @@ chore: оновив build.js
 
 **Реалізація:** `buildOurClients(mode)` (`03-sections.js`, `mode` = `'desktop'`/`'tablet'`/`'mobile'`; tablet+mobile ділять одну параметризовану гілку (різниця — `shiftN`); спільні скрамбл/прогрес/текст-утиліти) → `section.oc = { prepare, enter, reset, step, state, dispose }`; `advance`/`goToSection`/`tabletHeroStep` делегують; `01-init.js` реєструє `ScrambleTextPlugin`. matchMedia: desktop → `'desktop'`, tablet (768-991) → `'tablet'`, mobile (≤479) → `'mobile'`. **Усі 3 брейкпоінти зроблено й ✅ ПІДТВЕРДЖЕНО Romanом** (`e96c976` desktop, `9e1a958` tablet, `8a1b3d0` mobile; фікси `d236286`/`b022ae2`/`15422ae`). Секція is-our-clients — ПОВНІСТЮ ЗАВЕРШЕНА на всіх девайсах.
 
+### ADR-014: Кастомний Vimeo-плеєр проєктів (10-project-video.js) — cover + власні контроли
+
+**Рішення:** відео-портфоліо в секції `is-projects` — окремий модуль `10-project-video.js` з **повністю кастомними контролами** (рідні Vimeo-контроли вимкнено `&controls=0`). На відміну від hero-відео (`08-video.js`, фонове autoplay) — це **кероване користувачем** відео зі звуком, play/pause, перемоткою, гучністю, fullscreen.
+
+**Розмітка-контракт (data-атрибути, ADR-007):** корінь `[data-kulbit-project-video]` (на `.projects-video-wrapper`; усередині `<iframe>` Vimeo); `[data-kulbit-poster]` (постер до старту); `[data-kulbit-play]` (велика кнопка старту); `[data-kulbit-controls]` (панель, `display:none` дефолт); у ній `[data-kulbit-toggle]` з `[data-kulbit-icon-play]`/`[data-kulbit-icon-pause]`, таймери `[data-kulbit-time-current]`/`[data-kulbit-time-total]`, доріжка `[data-kulbit-seek]` з `[data-kulbit-seek-fill]` (прогрес) + `[data-kulbit-buffer]` (завантажено), гучність `[data-kulbit-volume]` з `[data-kulbit-icon-volume]`/`[data-kulbit-icon-mute]` + `[data-kulbit-volume-popup]`>`[data-kulbit-volume-track]`>`[data-kulbit-volume-fill]`, `[data-kulbit-fullscreen]`.
+
+**Механіка:**
+- **Cover** — iframe масштабується так, щоб 16:9 покривало корінь (та сама математика, що в `08-video.js`); `ResizeObserver` + перерахунок на `fullscreenchange`.
+- **Vimeo SDK** (`new Vimeo.Player(iframe)`): подія `timeupdate.percent` = зіграна частка (прогрес+час), `progress.percent` = завантажена частка (буфер).
+- **Перемотка/гучність** — `pointerdown/move/up` + `setPointerCapture` (працює і за межами елемента). Доріжка горизонтальна; повзунок гучності вертикальний (верх = більше, `fill.height %`).
+- **Попап гучності** — плавний (gsap `fromTo` fade + легкий під'їзд `y:8→0`, ~0.2с; `killTweensOf` + guard у `onComplete` від гонки відкр/закр); клік по динаміку відкр/закр, клік поза попапом — закрити.
+- **Іконки** — `play↔pause` за реальним станом плеєра (події), `volume↔mute` за рівнем (0 = mute); перемикання через `autoAlpha`.
+- **Fullscreen** — нативний API на корінь (+ webkit-fallback); контроли лишаються (вони діти кореня). iOS-обмеження: fullscreen дива не працює на iPhone Safari (guard + warn).
+- **Пауза за кадром** — запис `{player, sectionIndex, show, hide}` у `app.videos`; `hide()` = `player.pause()`, `show()` = **no-op** (плей лише вручну, без автоплею). Навігація (`hideOtherVideos`) глушить звук, коли секцію накрито стекінгом або в landscape-попапі.
+
+**Причини:** клієнт хоче брендовані контроли (не Vimeo-UI); cover потрібен для дизайну (не letterbox); pointer-події = єдина модель для миші+тача; інтеграція з `app.videos` уникає звуку off-screen без дублювання логіки.
+
+**Реалізація:** `10-project-video.js` (новий, `initProjectVideo` на кожен `[data-kulbit-project-video]`). ✅ Перевірено покроково в консолі (cover, play/pause, таймери, доріжка+буфер, гучність-попап, fullscreen) — Roman підтвердив. Коміт `da2ac68`.
+
 ---
 
 ## 11. План виконання — поточний статус
@@ -682,9 +702,11 @@ chore: оновив build.js
   - **Чому outline, а не border (фінальне рішення 22.05.2026, `b4a975d`):** із `border` SVG-оверлей (`width/height:100%`) заповнює **padding-box** (усередині бордера), а точно виміряти border-box під CSS-transform (стекінг/анімації) + субпікселі — і ламалося (лінія зміщена/менша/перекошена). **Без бордера** (outline не «з'їдає» місце) box кнопки = її видимий край, тож SVG `width/height:100%` лягає **точно**: percentage рахується в ЛЕЙАУТ-просторі (дробово, transform-safe, SVG масштабується разом із кнопкою) — **без жодних вимірів px**. `viewBox=offsetWidth/offsetHeight` + `preserveAspectRatio:none` розтягує rect рівно під box. ⚠️ **Урок:** не намагатися вимірювати px-геометрію елемента під трансформами (`getBoundingClientRect` дає візуальний/зменшений розмір, `offsetWidth` — округлений) — надійніше percentage-sizing від чистого box.
 - [x] **Vimeo bg-відео в hero** — **завершено** (`08-video.js`). Фоновий плеєр Vimeo SDK (`background: true` → autoplay+loop+muted, без UI), через `<iframe>` (unlisted-URL `/{id}/{hash}`). Cover рахується від контейнера (тримається під scale-анімацією). Звук вмикається у background-режимі по кліку — перевірено. Конвенція: контейнер `[data-kulbit-video]` + `data-kulbit-video-id`/`-video-hash`; кнопка `[data-kulbit-sound]` (старт muted = перекреслена іконка, клік → динамік). Скейл відео (1.3→1) робить рушій таймлайну (ADR-009), не відео-модуль. Деталі — [[vimeo-video-requirement]].
 
-### 🔖 Точка відновлення (КІНЕЦЬ сесії 21.05.2026 — hero ПОВНІСТЮ готовий, Кроки 1-8 закриті)
+### 🔖 Точка відновлення (25.05.2026 — Vimeo-плеєр проєктів готовий, ADR-014)
 
-**📌 TL;DR для наступної сесії:** Hero-секція повністю завершена й підтверджена на всіх девайсах. **Кроки 1-8 + Крок 7 закриті.** Лишився **Крок 6** — анімації решти 7 секцій + footer, але вони ЗАБЛОКОВАНІ контентом: Roman зараз верстає ці секції у Webflow. Коли зʼявиться розмітка/контент — навішуємо на елементи `data-kulbit-*` атрибути (ADR-009) або reveal-кроки `[data-kulbit-step]`, рушій уже готовий. **Секція is-our-clients — ✅ ПОВНІСТЮ ЗАВЕРШЕНА Й ПІДТВЕРДЖЕНА на ВСІХ 3 брейкпоінтах (ADR-013; tablet/mobile через параметр `shiftN`).** Друга повністю готова секція сайту (після hero). Усе запушено (`8a1b3d0`), бандл ~61 KB, робоче дерево чисте.
+**📌 TL;DR для наступної сесії:** Готові секції: **hero** (всі девайси, ADR-009/011/012) і **is-our-clients** (всі 3 брейкпоінти, ADR-013). Цієї сесії (25.05.2026) додано **кастомний Vimeo-плеєр проєктів** у секції `is-projects` — `10-project-video.js` (ADR-014): cover, play/pause, таймери, доріжка прогресу + буфер, гучність-попап (вертикальний повзунок), fullscreen, пауза за кадром. Перевірено покроково в консолі, **підтверджено Romanом**, запушено (`da2ac68`), бандл ~85 KB. Лишився **Крок 6** — анімації решти секцій + footer (поки Roman їх верстає у Webflow): навішуємо `data-kulbit-*` (ADR-009) або reveal-кроки `[data-kulbit-step]`, рушій готовий. Далі — Крок 9 (попап-форма), Крок 10 (поліш).
+
+**Стан секції is-projects (25.05.2026):** відео-плеєр повністю робочий. Сама секція `.section.is-projects` має заголовок (Motion Cut / by kulbit), прогрес-бар, картку-відео. **Покрокова анімація самої секції (як в is-our-clients) ще НЕ робилась** — поки лише відео-контрол. Розмітка плеєра — у локальному експорті `kulbit-gsap.webflow/index.html` (секція `.section.is-projects`).
 
 **Підтверджено на старті сесії:** запечена (бандл) версія таблета на staging — **працює** (десктоп + таблет: hero, стекінг, передача на секцію 2, відмотування, пауза/звук). Питання з минулої точки закрите.
 
@@ -858,5 +880,5 @@ ID `1180786664`, hash `865b5a46af`. Встав **лише iframe** (без paddi
 
 ---
 
-_Останнє оновлення цього файлу: 21 травня 2026 (кінець сесії) — **Крок 8 + Крок 7 ЗАКРИТО, hero повністю готовий**. Цієї сесії: мобільний hero ≤479 (ADR-011), попап landscape по орієнтації (ADR-004), фікси (інверсія скролу на тачі ADR-008, клас іконок, рендер-висота замість innerHeight, центр кнопки), **динамічний `gsap.matchMedia` + таймінг паузи відео при накритті (ADR-012)** — усе перевірено на staging (вкл. реальний телефон) і підтверджено Romanом. Крок 7 (header) закрито — зникає в hero-таймлайні, окремої логіки не треба. **Точка відновлення — в кінці §11** (там TL;DR). Останній коміт: `8a1b3d0` (is-our-clients МОБІЛКА — shiftN [2,1,2]; усі 3 брейкпоінти зроблено, ADR-013). Наступне: **МОБІЛКА is-our-clients** (десктоп+таблет готові), далі решта секцій коли з'явиться контент._
+_Останнє оновлення цього файлу: 25 травня 2026 — **додано кастомний Vimeo-плеєр проєктів `10-project-video.js` (ADR-014)** у секції is-projects: cover, play/pause, таймери, доріжка+буфер, гучність-попап, fullscreen, пауза за кадром. Перевірено покроково в консолі, підтверджено Romanом, запушено (`da2ac68`), бандл ~85 KB. **Точка відновлення — в кінці §11** (там TL;DR). Наступне: покрокова анімація самої секції is-projects (за потреби) + решта секцій, коли Roman їх зверстає._
 _При значущих змінах архітектури — оновлювати розділ 10 (ADR) і розділ 11 (план)._
