@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-25T16:46:03.649Z */
+/* Kulbit Webflow — зібрано 2026-05-25T17:46:13.959Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -199,7 +199,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
         steps: [], isStepped: false,        // reveal-кроки
         timeline: null, isAnimated: false,  // кастомний таймлайн desktop (ADR-009)
         tabletTL: null, isTabletHero: false, // спец таблет-hero (ADR-011)
-        oc: null, isOurClients: false        // спец секція is-our-clients (ADR-013)
+        oc: null, isOurClients: false,       // спец секція is-our-clients (ADR-013)
+        pv: null, isProjects: false          // спец секція is-projects: свап відео (ADR-015)
       };
     });
 
@@ -241,6 +242,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.resetHeroState();
       app.buildDesktopAnimations();
       app.buildOurClients('desktop');                    // is-our-clients (ADR-013)
+      app.buildProjects('desktop');                      // is-projects: свап відео (ADR-015, поки лише desktop)
       return () => app.teardownHero();
     });
     app.mm.add('(min-width: 768px) and (max-width: 991px)', () => {       // tablet 768-991
@@ -277,6 +279,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
       s.tabletTL = null; s.isTabletHero = false;
       if (s.oc && s.oc.dispose) s.oc.dispose(); // прибрати IntersectionObserver (ADR-013)
       s.oc = null; s.isOurClients = false;
+      if (s.pv && s.pv.dispose) s.pv.dispose(); // прибрати свап-стан is-projects (ADR-015)
+      s.pv = null; s.isProjects = false;
     });
     console.log('[Kulbit-Anim] teardown hero (зміна брейкпоінта)');
   };
@@ -553,8 +557,11 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const disarmHeads = () => headIO.disconnect();
 
     // Прогрес (заголовки керуються IO незалежно)
-    const prepareCommon = () => { if (fill) gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); }; // плавно→0 (реверс)
+    // Прогрес-лінія: МИТТЄВО в 0 при підготовці (без видимого зворотного руху під час появи —
+    //   спорожнення робить collapseCommon, коли секція реально сповзає геть). Фікс бага лінії.
+    const prepareCommon = () => { if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); } }; // миттєво→0
     const enterCommon = () => { if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); } setFill(0, true); }; // 0→1/3
+    const collapseCommon = () => { if (fill) { gsap.killTweensOf(fill); gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); } }; // плавно→0 разом зі сповзанням секції
     const showCommon = () => {}; // заголовки керуються IO; тут нічого
 
     section.isOurClients = true;
@@ -597,6 +604,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         prepare() { stage = 0; applyStage(0, false); setTexts(false); prepareCommon(); },
         reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= scrIdx); showCommon(); },
         enter() { stage = 0; applyStage(0, false); enterCommon(); },
+        collapse() { collapseCommon(); }, // секція сповзає геть → лінія плавно в 0
         dispose() { disarmHeads(); },
         step(dir) {
           const ns = Math.max(0, Math.min(MAXST, stage + dir));
@@ -625,6 +633,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         prepare() { state = 0; setCards(0, false); setTexts(false); prepareCommon(); },
         reset(toEnd) { state = toEnd ? NW - 1 : 0; setCards(state, false); setFill(state, false); setTexts(state === NW - 1); showCommon(); },
         enter() { state = 0; setCards(0, false); enterCommon(); },
+        collapse() { collapseCommon(); }, // секція сповзає геть → лінія плавно в 0
         dispose() { disarmHeads(); },
         step(dir) {
           const ns = Math.max(0, Math.min(NW - 1, state + dir));
@@ -641,6 +650,109 @@ console.log('[Kulbit] 03-sections.js завантажено');
       };
       console.log('[Kulbit-OC] desktop готовий, наборів:', NW);
     }
+  };
+
+  // 03c — Спец-секція is-projects (ADR-015): вертикальний свап відео + фінальна END-картинка.
+  //   Лише DESKTOP (таблет/мобілка — інша анімація, згодом). Інтегровано в snap як section.oc.
+  //   Елементи свапу = прямі діти [data-kulbit-project-group] (відео + остання [data-kulbit-project-end]).
+  //   Активний елемент height 100%, решта 0; усі зсунуті по y на -(індекс*гэп) — гэп лишається
+  //   між відео, але над активним ховається за верхній край (немає порожньої смуги зверху).
+  //   Свап: поточне 100→0, наступне 0→100 (виростає знизу). Згорнуте відео → скидається на постер
+  //   (пауза, час 0, контроли off). Прогрес-бар по індексу (як is-our-clients). Лінія: миттєво 0 при
+  //   prepare, 0→1/N на enter (поява), плавно→0 на collapse (сповзання) — та сама логіка, що в oc.
+  app.buildProjects = (mode) => {
+    const group = document.querySelector('[data-kulbit-project-group]');
+    if (!group) return;
+    const section = app.sections.find((s) => s.el.contains(group));
+    if (!section) { console.warn('[Kulbit-PV] секцію групи не знайдено'); return; }
+
+    const STEP = app.config.scrollDuration, EASE = app.config.ease;
+    group.style.overflow = 'hidden';
+    const gap = () => parseFloat(getComputedStyle(group).rowGap) || 0;
+
+    const items = [...group.children].map((el) => {
+      const isEnd   = el.matches('[data-kulbit-project-end]') || !!el.querySelector('[data-kulbit-project-end]');
+      const isVideo = !isEnd && (el.matches('[data-kulbit-project-video]') || !!el.querySelector('[data-kulbit-project-video]'));
+      const iframe  = el.querySelector('iframe');
+      return {
+        el, isVideo, isEnd,
+        poster:   el.querySelector('[data-kulbit-poster]'),
+        bigPlay:  el.querySelector('[data-kulbit-play]'),
+        controls: el.querySelector('[data-kulbit-controls]'),
+        player:   (isVideo && iframe && typeof Vimeo !== 'undefined') ? new Vimeo.Player(iframe) : null
+      };
+    });
+    const els = items.map((r) => r.el);
+    const total = items.length;
+    if (total < 2) { console.warn('[Kulbit-PV] замало елементів свапу'); return; }
+
+    // Прогрес-бар: трек 15% + дочірня лінія-заповнення 100% (.pv-fill), ширина (state+1)/total
+    const bar = section.el.querySelector('.section-progresbar');
+    let fill = null;
+    if (bar) {
+      bar.style.position = 'relative';
+      bar.style.backgroundColor = 'rgba(253, 252, 252, 0.15)';
+      fill = bar.querySelector('.pv-fill');
+      if (!fill) { fill = document.createElement('div'); fill.className = 'pv-fill'; bar.appendChild(fill); }
+      Object.assign(fill.style, { position: 'absolute', left: '0', top: '0', height: '100%', backgroundColor: '#fdfcfc' });
+    }
+    const setFill = (s, animate) => {
+      if (!fill) return;
+      const w = ((s + 1) / total * 100) + '%';
+      if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
+      else gsap.set(fill, { width: w });
+    };
+    const prepareFill  = () => { if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); } };           // миттєво→0
+    const enterFill    = () => { prepareFill(); setFill(0, true); };                                                  // 0→1/N (поява)
+    const collapseFill = () => { if (fill) { gsap.killTweensOf(fill); gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); } }; // плавно→0 (сповзання)
+
+    // Скидання відео-елемента на початковий стан (постер + пауза + час 0 + контроли off)
+    const resetItem = (rec) => {
+      if (!rec.isVideo) return;
+      if (rec.player)   { rec.player.pause(); rec.player.setCurrentTime(0); }
+      if (rec.poster)   gsap.set(rec.poster,  { autoAlpha: 1 });
+      if (rec.bigPlay)  gsap.set(rec.bigPlay, { autoAlpha: 1 });
+      if (rec.controls) rec.controls.style.display = 'none';
+    };
+    const resetOthers = (active) => items.forEach((r, i) => { if (i !== active) resetItem(r); });
+
+    // Зсув колонки: над активним s є s згорнутих (0px) + s гэпів → зсув = -(s*гэп)
+    const offsetFor = (s) => -s * gap();
+    // Дискретний стан без анімації
+    const applyState = (s) => {
+      items.forEach((r, i) => gsap.set(r.el, { height: i === s ? '100%' : '0%' }));
+      gsap.set(els, { y: offsetFor(s) });
+    };
+
+    let state = 0;
+    applyState(0); resetOthers(0); prepareFill(); // старт: відео 0 видиме, решта на постері, лінія 0
+
+    section.isProjects = true;
+    section.pv = {
+      get state() { return state; },
+      prepare() { state = 0; applyState(0); resetOthers(0); prepareFill(); }, // наїзд: приховано (лінія 0)
+      enter()   { state = 0; applyState(0); resetOthers(0); enterFill(); },   // повне накриття: лінія 0→1/N
+      collapse() { collapseFill(); },                                          // секція сповзає геть → лінія плавно в 0
+      reset(toEnd) { state = toEnd ? total - 1 : 0; applyState(state); setFill(state, false); resetOthers(state); }, // миттєвий стан
+      // вихід із desktop-брейкпоінта: повертаємо натуральний лейаут (висоти/трансформ зі step
+      //   живуть поза matchMedia-контекстом, тож чистимо вручну — щоб таблет/мобілка були чисті)
+      dispose() { group.style.overflow = ''; gsap.set(els, { clearProps: 'height,transform' }); if (fill) fill.remove(); },
+      step(dir) {
+        const ns = Math.max(0, Math.min(total - 1, state + dir));
+        if (ns === state) return false;        // межа секції → advance викличе goToSection
+        const out = items[state];
+        state = ns;
+        app.isAnimating = true;
+        resetItem(out);                        // що згортається → на постер
+        gsap.to(out.el,    { height: '0%',   duration: STEP, ease: EASE });
+        gsap.to(items[ns].el, { height: '100%', duration: STEP, ease: EASE });
+        gsap.to(els,       { y: offsetFor(ns), duration: STEP, ease: EASE });
+        setFill(ns, true);
+        gsap.delayedCall(STEP, () => { app.isAnimating = false; });
+        return true;
+      }
+    };
+    console.log('[Kulbit-PV] desktop готовий, елементів свапу:', total, '| гэп', Math.round(gap()) + 'px');
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
@@ -755,8 +867,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const target = app.sections[clamped];
 
     // Стан кроків/таймлайну нової секції
-    if (target.isOurClients && target.oc) {
-      app.currentStep = 0; // власний стан — у target.oc (виставляємо в instant/animated нижче)
+    if ((target.isOurClients && target.oc) || (target.isProjects && target.pv)) {
+      app.currentStep = 0; // власний стан — у target.oc / target.pv (виставляємо в instant/animated нижче)
     } else if (target.isAnimated && target.timeline) {
       const atEnd = dir < 0;                       // вхід знизу → таймлайн у кінці
       target.timeline.progress(atEnd ? 1 : 0).pause();
@@ -773,6 +885,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.currentSectionIndex = clamped;
       app.applyStackingPositions();
       if (target.isOurClients && target.oc) target.oc.reset(dir < 0); // миттєвий стан секції
+      if (target.isProjects && target.pv) target.pv.reset(dir < 0);   // миттєвий стан свапу відео
       if (app.updateVideoVisibility) app.updateVideoVisibility();
       return;
     }
@@ -790,15 +903,25 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (dir > 0) {
       // вниз: ціль наповзає знизу поверх поточної
       if (target.isOurClients && target.oc) target.oc.prepare(); // під час наїзду — приховано (прогрес/заголовки)
+      if (target.isProjects && target.pv) target.pv.prepare();   // is-projects: приховано до появи (лінія 0)
       gsap.to(target.el, {
         yPercent: 0,
         duration: app.config.scrollDuration, ease: app.config.ease,
-        onComplete: () => { finish(); if (target.isOurClients && target.oc) target.oc.enter(); } // на повному накритті — поява
+        onComplete: () => {
+          finish();
+          if (target.isOurClients && target.oc) target.oc.enter(); // на повному накритті — поява
+          if (target.isProjects && target.pv) target.pv.enter();
+        }
       });
     } else {
       // вгору: поточна сповзає вниз, відкриваючи попередню
       if (target.isOurClients && target.oc) target.oc.reset(true); // секцію відкривають на набір 3 (кінець)
-      gsap.to(app.sections[prev].el, {
+      if (target.isProjects && target.pv) target.pv.reset(true);   // is-projects: відкривають на END-картинці
+      // Секція, що сповзає геть → її прогрес-лінія плавно згортається разом із нею (фікс бага)
+      const leaving = app.sections[prev];
+      if (leaving.isOurClients && leaving.oc && leaving.oc.collapse) leaving.oc.collapse();
+      if (leaving.isProjects && leaving.pv && leaving.pv.collapse) leaving.pv.collapse();
+      gsap.to(leaving.el, {
         yPercent: 100,
         duration: app.config.scrollDuration, ease: app.config.ease,
         onComplete: finish
@@ -819,6 +942,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     // is-our-clients (ADR-013, десктоп): покрокова хореографія всередині секції
     if (section.isOurClients && section.oc) {
       if (section.oc.step(dir)) return;                       // крок усередині оброблено
+      app.goToSection(app.currentSectionIndex + dir, false, dir); // межа → сусідня секція
+      return;
+    }
+
+    // is-projects (ADR-015, десктоп): свап відео всередині секції
+    if (section.isProjects && section.pv) {
+      if (section.pv.step(dir)) return;                       // свап усередині оброблено
       app.goToSection(app.currentSectionIndex + dir, false, dir); // межа → сусідня секція
       return;
     }
