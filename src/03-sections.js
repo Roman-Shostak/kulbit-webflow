@@ -78,18 +78,21 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildDesktopAnimations();
       app.buildOurClients('desktop');                    // is-our-clients (ADR-013)
       app.buildProjects('desktop');                      // is-projects: свап відео (ADR-015, поки лише desktop)
+      app.restoreSection();                              // персистентність: повернутись на збережену секцію
       return () => app.teardownHero();
     });
     app.mm.add('(min-width: 768px) and (max-width: 991px)', () => {       // tablet 768-991
       app.resetHeroState();
       app.buildTabletHero();
       app.buildOurClients('tablet');                     // is-our-clients (ADR-013, таблет)
+      app.restoreSection();                              // персистентність: повернутись на збережену секцію
       return () => app.teardownHero();
     });
     app.mm.add('(max-width: 479px)', () => {             // mobile-портрет ≤479
       app.resetHeroState();
       app.buildTabletHero();
       app.buildOurClients('mobile');                     // is-our-clients (ADR-013, мобілка: shiftN [2,1,2])
+      app.restoreSection();                              // персистентність: повернутись на збережену секцію
       return () => app.teardownHero();
     });
     // 480-767 — горизонтальна мобілка: hero не будуємо (попап landscape, 06-responsive.js)
@@ -692,6 +695,19 @@ console.log('[Kulbit] 03-sections.js завантажено');
   //      Вниз — ціль наповзає знизу (yPercent 100→0) поверх поточної (вона лишається на місці);
   //      вгору — поточна сповзає вниз (0→100), відкриваючи попередню (вона під нею на 0).
   //      dir задає стан кроків нової секції: згори (dir>0) → на початку; знизу (dir<0) → у кінці.
+
+  // 08a — Персистентність позиції (sessionStorage): зберігаємо індекс поточної секції, щоб
+  //       reload і зміна брейкпоінта (поворот девайса) НЕ скидали на hero. Рівень — СЕКЦІЯ
+  //       (внутрішній крок секції стартує з початку: restore = миттєвий goToSection до збереженої).
+  const SECTION_KEY = 'kulbit-section';
+  app.persistSection = () => { try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {} };
+  app.restoreSection = () => {
+    let saved = parseInt(sessionStorage.getItem(SECTION_KEY) || '0', 10);
+    if (isNaN(saved)) saved = 0;
+    saved = Math.max(0, Math.min(saved, app.sections.length - 1));
+    if (saved > 0) app.goToSection(saved, true, 1); // миттєвий стрибок на збережену секцію (без анімації)
+  };
+
   app.goToSection = (index, instant, dir) => {
     if (!app.sections.length) return;
 
@@ -717,7 +733,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
 
     if (instant) {
-      app.currentSectionIndex = clamped;
+      app.currentSectionIndex = clamped; app.persistSection();
       app.applyStackingPositions();
       if (target.isOurClients && target.oc) target.oc.reset(dir < 0); // миттєвий стан секції
       if (target.isProjects && target.pv) target.pv.reset(dir < 0);   // миттєвий стан свапу відео
@@ -726,7 +742,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
 
     app.isAnimating = true;
-    app.currentSectionIndex = clamped;
+    app.currentSectionIndex = clamped; app.persistSection();
     // Відео нової поточної секції — показуємо ОДРАЗУ (грає, поки секція наповзає/відкривається).
     if (app.showCurrentVideo) app.showCurrentVideo();
     const finish = () => {
@@ -834,7 +850,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const maxStep = section.isAnimated ? 1 : (section.isStepped ? section.steps.length : 0);
     const step = Math.max(0, Math.min(targetStep || 0, maxStep));
 
-    app.currentSectionIndex = clamped;
+    app.currentSectionIndex = clamped; app.persistSection();
     app.currentStep = step;
 
     // Стекінг-позиції (анімовано)
