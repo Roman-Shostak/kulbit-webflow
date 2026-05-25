@@ -65,6 +65,10 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       console.error('[Kulbit-PV] ❌ у [data-kulbit-project-video] немає <iframe> — встав ембед Vimeo з &controls=0');
       return null;
     }
+    // Vimeo-iframe (cross-origin) перехоплює wheel → Observer не отримує скрол над відео.
+    //   Контроли в нас власні (поверх відео), тож iframe-у події миші не потрібні: вимикаємо
+    //   pointer-events, щоб колесо «проходило наскрізь» до Observer (кнопки лишаються клікабельні).
+    iframe.style.pointerEvents = 'none';
 
     const poster      = root.querySelector('[data-kulbit-poster]');
     const bigPlay     = root.querySelector('[data-kulbit-play]');
