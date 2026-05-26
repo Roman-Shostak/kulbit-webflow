@@ -403,7 +403,7 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
 ```
 
-Підставляєш короткий хеш свіжого коміту (напр. `@f0928a9`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Останній запушений коміт: `f0928a9`** (pointer-events на projects-iframe). _Перед ним: `7c6a1eb` (свап is-projects + фікс лінії, ADR-015), `da2ac68` (Vimeo-плеєр проєктів, ADR-014)._
+Підставляєш короткий хеш свіжого коміту (напр. `@41789ff`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Останній запушений коміт: `41789ff`** (fullscreen→landscape + попап-guard, ADR-016). _Перед ним: `2d438a7` (tablet/mobile свап+прогрес), `2a096a9` (одне відео), `e47a8d7` (хедер), `50fb693` (персистентність)._
 
 ### Підключення в Webflow
 
@@ -671,7 +671,27 @@ chore: оновив build.js
 
 **Фікс бага прогрес-лінії is-our-clients (і pv):** раніше при сповзанні секції лінія не спорожнювалась (зависала повна), а при повторній появі йшла назад→вперед (видимий глюк). Тепер: `collapse()` спорожнює лінію разом зі сповзанням (у `goToSection` dir<0 для секції-`leaving`); `prepareCommon` миттєвий (`gsap.set`, не `gsap.to`) — без зворотного руху під час появи. Застосовано і до `oc`, і до `pv`.
 
-**Реалізація:** `buildProjects(mode)` + `section.pv = { state, prepare, enter, collapse, reset, step, dispose }` (`03-sections.js`); `advance`/`goToSection` делегують (паралельно `isOurClients`); `collapse()` додано в `oc`; `dispose()` повертає натуральний лейаут на вихід із desktop-брейкпоінта (висоти/трансформ зі `step` живуть поза matchMedia-контекстом). matchMedia: лише `≥992` → `buildProjects('desktop')`. ✅ Перевірено реальним скролом на staging — Roman підтвердив (свап, гэп+зсув, прогрес, скидання, фікс лінії, скрол над відео). Коміти `7c6a1eb` (свап+фікс лінії), `f0928a9` (pointer-events).
+**Реалізація:** `buildProjects(mode)` + `section.pv = { state, prepare, enter, collapse, reset, step, dispose }` (`03-sections.js`); `advance`/`goToSection` делегують (паралельно `isOurClients`); `collapse()` додано в `oc`; `dispose()` повертає натуральний лейаут на вихід із desktop-брейкпоінта (висоти/трансформ зі `step` живуть поза matchMedia-контекстом). matchMedia: лише `≥992` → `buildProjects('desktop')`. ✅ Перевірено реальним скролом на staging — Roman підтвердив (свап, гэп+зсув, прогрес, скидання, фікс лінії, скрол над відео). Коміти `7c6a1eb` (свап+фікс лінії), `f0928a9` (pointer-events). _Оновлено ADR-016: вже не лише desktop — tablet/mobile через вікно 3._
+
+### ADR-016: is-projects на tablet/mobile (вікно 3) + персистентність позиції + landscape/fullscreen + UX
+
+**Рішення (одна сесія, 26.05.2026):** доробка is-projects на менші екрани + наскрізні UX-фічі навігації.
+
+**1. Tablet/mobile свап — ВІКНО з 3 блоків (`buildProjects` уніфіковано через `WIN`):** desktop `WIN=1` (одне відео на повну), tablet/mobile `WIN=3` (видно 3 блоки). **Спільна машина станів:** `state` = старт вікна `[state..state+WIN-1]`; `maxState = endIdx - WIN + 1` (останній стан — коли END став останнім видимим → далі `advance` до сусідньої секції). Свап: верхній елемент вікна схлопується (`height→0`), знизу виростає наступний; уся колонка зсунута по `y` на `-(state*гэп)`. **Висота блоків** — від `#smooth-wrapper` (видимий вьюпорт) мінус простір над групою (`group rect top`) мінус `padding-bottom` секції; на мобілці `100vh > видимого`, тож НЕ можна рахувати від `group.clientHeight` (блоки лізли б під padding). **`slotH = (availH - (WIN-1)*гэп)/WIN`**.
+
+**2. Динамічна висота:** `onResize` → `applyState(state, false)` перевиставляє висоти/зсув (зміна висоти девайса/інспектора підтягує блоки). Слухач знімається в `dispose`.
+
+**3. Поява (tablet/mobile, на `enter`):** блоки вікна по черзі виїздять знизу (`y: RISE→0`) + `opacity` (gsap `stagger`). `prepare` ховає їх (`autoAlpha 0`) під час наїзду секції, `enter` (повне накриття) програє появу. Desktop появи блоків не має (лише прогрес).
+
+**4. Прогрес-бар СКРІЗЬ:** ширина `(state+1)/(maxState+1)` на всіх брейкпоінтах (раніше лише desktop).
+
+**5. Персистентність позиції (`sessionStorage`, ADR-008a у коді):** `persistSection` зберігає `currentSectionIndex` у `goToSection`; `restoreSection` (в кінці кожної matchMedia-гілки, після `build*`) робить миттєвий `goToSection(saved, true, 1)`. Reload і зміна брейкпоінта (поворот девайса) більше НЕ скидають на hero. **Реверсує trade-off ADR-012.** Рівень — секція (внутрішній крок стартує з початку). При відновленні на НЕ-першу секцію `restoreSection` ховає `[data-kulbit-header]` (`autoAlpha 0`) — інакше hero-таймлайн на кроці 0 лишав би хедер видимим над секцією; керування хедером далі в hero-анімації (reverse при поверненні вгору).
+
+**6. Грає лише ОДНЕ відео (`10-project-video.js`):** реєстр усіх projects-плеєрів; на подію `play` `pauseOthers` скидає решту на постер (пауза + `currentTime 0` + thumb). Актуально для tablet/mobile, де у вікні видно кілька відео.
+
+**7. Fullscreen у landscape + попап (`10-project-video.js` + `06-responsive.js`):** на вхід у fullscreen — `screen.orientation.lock('landscape')` (мобілка/таблет відкривають відео горизонтально; десктоп ігнорує через `catch`), на вихід (Esc/back/кнопка) — `unlock` (через `fullscreenchange`). Попап «поверни телефон» (`06-responsive.js`) **поважає fullscreen**: поки `document.fullscreenElement` активний — попап OFF, навігація OFF, відео грає (інакше landscape-фуллскрін одразу тригерив би попап).
+
+**Реалізація:** `buildProjects` (уніфіковано, `03-sections.js`); `persistSection`/`restoreSection` (`03-sections.js`); `registry`/`pauseOthers`/`lockLandscape`/`unlockOrientation` (`10-project-video.js`); `inFullscreen`-guard + `fullscreenchange` (`06-responsive.js`). Коміти: `50fb693` (персистентність), `e47a8d7` (хедер), `2a096a9` (одне відео), `2d438a7` (tablet/mobile свап+прогрес+resize), `41789ff` (landscape/fullscreen). ⏳ **Очікує підтвердження на реальному девайсі** (tablet/mobile свап, поява, landscape-fullscreen, поворот).
 
 ---
 
@@ -719,13 +739,14 @@ chore: оновив build.js
   - **Чому outline, а не border (фінальне рішення 22.05.2026, `b4a975d`):** із `border` SVG-оверлей (`width/height:100%`) заповнює **padding-box** (усередині бордера), а точно виміряти border-box під CSS-transform (стекінг/анімації) + субпікселі — і ламалося (лінія зміщена/менша/перекошена). **Без бордера** (outline не «з'їдає» місце) box кнопки = її видимий край, тож SVG `width/height:100%` лягає **точно**: percentage рахується в ЛЕЙАУТ-просторі (дробово, transform-safe, SVG масштабується разом із кнопкою) — **без жодних вимірів px**. `viewBox=offsetWidth/offsetHeight` + `preserveAspectRatio:none` розтягує rect рівно під box. ⚠️ **Урок:** не намагатися вимірювати px-геометрію елемента під трансформами (`getBoundingClientRect` дає візуальний/зменшений розмір, `offsetWidth` — округлений) — надійніше percentage-sizing від чистого box.
 - [x] **Vimeo bg-відео в hero** — **завершено** (`08-video.js`). Фоновий плеєр Vimeo SDK (`background: true` → autoplay+loop+muted, без UI), через `<iframe>` (unlisted-URL `/{id}/{hash}`). Cover рахується від контейнера (тримається під scale-анімацією). Звук вмикається у background-режимі по кліку — перевірено. Конвенція: контейнер `[data-kulbit-video]` + `data-kulbit-video-id`/`-video-hash`; кнопка `[data-kulbit-sound]` (старт muted = перекреслена іконка, клік → динамік). Скейл відео (1.3→1) робить рушій таймлайну (ADR-009), не відео-модуль. Деталі — [[vimeo-video-requirement]].
 
-### 🔖 Точка відновлення (25.05.2026 — секція is-projects готова на DESKTOP, ADR-014+015)
+### 🔖 Точка відновлення (26.05.2026 — is-projects на ВСІХ девайсах + персистентність, ADR-014/015/016)
 
-**📌 TL;DR для наступної сесії:** Готові секції: **hero** (всі девайси, ADR-009/011/012), **is-our-clients** (всі 3 брейкпоінти, ADR-013) і **is-projects** (DESKTOP: ADR-014 плеєр + ADR-015 свап). Цієї сесії (25.05.2026): (1) кастомний Vimeo-плеєр проєктів `10-project-video.js` (ADR-014) — cover, play/pause, таймери, доріжка+буфер, гучність-попап, fullscreen, пауза за кадром; (2) **свап-хореографія is-projects** `section.pv` (ADR-015) — вертикальний свап відео + END-картинка, інтегровано в snap, прогрес-бар, гэп+зсув, скидання на постер; (3) **фікс бага прогрес-лінії** (спорожнення при сповзанні, спільно для oc і pv); (4) `pointer-events:none` на iframe (скрол над відео). Усе **підтверджено Romanом** на staging, запушено (`f0928a9`), бандл ~95 KB.
+**📌 TL;DR (26.05.2026):** is-projects тепер працює на ВСІХ брейкпоінтах (ADR-016): desktop — одне відео на повну (вікно 1), tablet/mobile — вікно з 3 блоків (свап по 1, поява блоків знизу+opacity), прогрес-бар скрізь, динамічна висота на resize. Плюс наскрізні UX: **персистентність позиції** (reload/поворот не скидають на hero, `sessionStorage`), **хедер ховається** при відновленні на не-першу секцію, **грає лише одне відео** (старт нового скидає інші на постер), **fullscreen відкриває відео в landscape** (orientation lock) + попап «поверни телефон» поважає fullscreen. Усе запушено (`41789ff`), бандл ~102 KB. ⏳ **tablet/mobile свап + landscape-fullscreen ОЧІКУЮТЬ підтвердження на реальному девайсі** (desktop свап + персистентність уже підтверджені).
 
-**Стан секції is-projects (25.05.2026):** ✅ DESKTOP повністю готовий (плеєр + свап + прогрес). **Таблет/мобілка — інша анімація відео, ще НЕ зроблено** (Roman підтвердив, що буде інша; `buildProjects` поки лише desktop через matchMedia, на таблет/мобілці свап не вмикається — `dispose` повертає натуральний лейаут). Розмітка: група `[data-kulbit-project-group]` на `.projects-cards-wrapper`, 2 відео `[data-kulbit-project-video]` + END `[data-kulbit-project-end]`. **Наступне по is-projects: таблет/мобільна анімація свапу.**
 
-**Далі по плану:** **Крок 6** — анімації решти секцій + footer (поки Roman їх верстає): `data-kulbit-*` (ADR-009) або reveal-кроки `[data-kulbit-step]`, рушій готовий. Потім Крок 9 (попап-форма), Крок 10 (поліш). Плюс таблет/мобілка для is-projects.
+**Стан is-projects (26.05.2026):** ✅ повністю на всіх брейкпоінтах — desktop одне відео на повну (вікно 1), tablet/mobile вікно з 3 блоків (ADR-014 плеєр + ADR-015 desktop-свап + ADR-016 tablet/mobile+UX). Розмітка: група `[data-kulbit-project-group]` на `.projects-cards-wrapper`, 2 відео `[data-kulbit-project-video]` + END `[data-kulbit-project-end]`.
+
+**Далі по плану:** **Крок 6** — анімації решти секцій + footer (поки Roman їх верстає): `data-kulbit-*` (ADR-009) або reveal-кроки `[data-kulbit-step]`, рушій готовий. Потім Крок 9 (попап-форма), Крок 10 (поліш).
 
 **Підтверджено на старті сесії:** запечена (бандл) версія таблета на staging — **працює** (десктоп + таблет: hero, стекінг, передача на секцію 2, відмотування, пауза/звук). Питання з минулої точки закрите.
 
@@ -899,5 +920,5 @@ ID `1180786664`, hash `865b5a46af`. Встав **лише iframe** (без paddi
 
 ---
 
-_Останнє оновлення цього файлу: 25 травня 2026 — **секція is-projects готова на DESKTOP**: Vimeo-плеєр (ADR-014) + свап-хореографія `section.pv` (ADR-015: вертикальний свап відео + END-картинка в snap, прогрес-бар, гэп+зсув, скидання на постер) + фікс бага прогрес-лінії (спорожнення при сповзанні, oc+pv) + `pointer-events:none` на iframe (скрол над відео). Усе підтверджено Romanом на staging, запушено (`f0928a9`), бандл ~95 KB. **Точка відновлення — в кінці §11** (там TL;DR). Наступне: **таблет/мобільна анімація свапу is-projects** (десктоп готовий) + решта секцій, коли Roman їх зверстає._
+_Останнє оновлення цього файлу: 26 травня 2026 — **is-projects готова на ВСІХ девайсах** (ADR-016): tablet/mobile свап вікном 3 + поява блоків + прогрес скрізь + динамічна висота; наскрізні UX — персистентність позиції (reload/поворот, sessionStorage), хедер ховається при відновленні, грає лише одне відео, fullscreen у landscape + попап-guard. Запушено (`41789ff`), бандл ~102 KB. ⏳ tablet/mobile свап + landscape-fullscreen очікують підтвердження на реальному девайсі. **Точка відновлення — в кінці §11.** Наступне: решта секцій + footer, коли Roman зверстає; Крок 9 (попап-форма)._
 _При значущих змінах архітектури — оновлювати розділ 10 (ADR) і розділ 11 (план)._
