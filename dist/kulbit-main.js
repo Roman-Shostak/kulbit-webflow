@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T13:16:32.870Z */
+/* Kulbit Webflow — зібрано 2026-05-26T13:21:28.486Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1730,10 +1730,11 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';
-      // Просто play() у gesture -- стартує надійно. Звук має йти НАТИВНО з embed (без muted=1):
-      //   будь-яка маніпуляція setMuted навколо play на iOS ламає запуск/паузить. Якщо відео
-      //   замутане -- прибрати `muted` з Vimeo-embed URL у Webflow (а не «лагодити» кодом).
-      player.play().catch((e) => console.warn('[Kulbit-PV] play:', e && e.name));
+      // Як hero (08-video.js, працює на iOS): play() ПЕРШИМ, одразу setMuted(false) СИНХРОННО
+      //   в тому ж gesture. Порядок критичний: setMuted ДО play Vimeo скидає назад на muted;
+      //   setMuted у .then (async) — поза gesture, iOS паузить. Синхронно після play — звук.
+      player.play();
+      player.setMuted(false);
     };
 
     // --- готовність: cover + ресайз-спостерігач + тривалість + початкова гучність ---
