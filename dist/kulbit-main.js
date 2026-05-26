@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T12:39:48.198Z */
+/* Kulbit Webflow — зібрано 2026-05-26T12:53:03.797Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1730,6 +1730,8 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';
+      player.setMuted(false);  // стартуємо зі звуком (embed може бути muted); клік = user-gesture, iOS дозволяє
+      setVolumeIcon(1);        // іконка → volume (не mute)
       player.play();
     };
 
