@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T09:04:31.265Z */
+/* Kulbit Webflow — зібрано 2026-05-26T10:34:05.656Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -698,11 +698,14 @@ console.log('[Kulbit] 03-sections.js завантажено');
     // tablet/mobile: перебити flex:1 1 0% (інакше flex-grow ділить висоту порівну й ігнорує height)
     if (!isDesktop) gsap.set(els, { flex: 'none' });
 
-    // slotH (лише tablet/mobile): доступна висота вьюпорта під групою / WIN
+    // slotH (лише tablet/mobile): доступна висота вьюпорта під групою / WIN.
+    //   Простір над групою рахуємо ВІДНОСНО секції (group.top - section.top), а НЕ вьюпорта —
+    //   щоб slotH не залежав від позиції секції на екрані (стекінг yPercent). Інакше при наїзді
+    //   (секція ще під екраном) slotH виходив невірним → стрибок стану на завершенні появи.
     const slotHeight = () => {
       const wrapper = app.wrapper || document.querySelector('#smooth-wrapper');
       const wrapperH = wrapper ? wrapper.clientHeight : window.innerHeight;
-      const gTop = group.getBoundingClientRect().top;
+      const gTop = group.getBoundingClientRect().top - section.el.getBoundingClientRect().top;
       const padB = parseFloat(getComputedStyle(section.el).paddingBottom) || 0; // section.el, НЕ section
       const availH = wrapperH - gTop - padB;
       return (availH - (WIN - 1) * gap()) / WIN;
