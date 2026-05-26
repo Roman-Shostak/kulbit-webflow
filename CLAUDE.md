@@ -403,7 +403,9 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
 ```
 
-Підставляєш короткий хеш свіжого коміту (напр. `@41789ff`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Останній запушений коміт: `41789ff`** (fullscreen→landscape + попап-guard, ADR-016). _Перед ним: `2d438a7` (tablet/mobile свап+прогрес), `2a096a9` (одне відео), `e47a8d7` (хедер), `50fb693` (персистентність)._
+Підставляєш короткий хеш свіжого коміту (напр. `@1b503b9`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Останній запушений коміт: `1b503b9`** (фікс регресії скролу: `getComputedStyle(section.el)` у `buildProjects`). _Перед ним: `c7b8470` (захист — Observer піднімається завжди, навіть якщо matchMedia кидає), `41789ff` (landscape/fullscreen), `2d438a7` (tablet/mobile свап)._
+
+> ⚠️ **Урок (регресія скролу 26.05.2026):** у `buildProjects` `section` = запис `app.sections` `{el, index, …}`, а НЕ DOM-елемент. `getComputedStyle(section)` кинув помилку → `registerAnimations` (matchMedia) впав ДО `setupObserver` → зник скрол на всьому сайті. Фікс: `section.el`. Захист `c7b8470`: `init` обгортає `registerAnimations` у try/catch, тож Observer тепер піднімається ЗАВЖДИ (помилка білду не вбиває навігацію).
 
 ### Підключення в Webflow
 
