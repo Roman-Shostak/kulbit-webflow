@@ -254,8 +254,16 @@ console.log('[Kulbit] 10-project-video.js завантажено');
 
     // --- fullscreen ---
     if (fsBtn) fsBtn.addEventListener('click', () => { if (fsElement()) exitFs(); else enterFs(); });
-    document.addEventListener('fullscreenchange', () => applyCover(root, iframe));
-    document.addEventListener('webkitfullscreenchange', () => applyCover(root, iframe));
+    const onFsChange = () => {
+      applyCover(root, iframe);
+      // Desktop: у fullscreen (наш root) блокуємо навігацію — щоб колесо не гортало секції під відео.
+      //   Вийшли — вмикаємо назад. На compact fullscreen нативний (Vimeo iframe), document.fullscreenElement
+      //   порожній → Observer не чіпаємо (нативний плеєр і так перекриває екран).
+      const app = window.KulbitApp;
+      if (app && app.observer) { if (fsElement()) app.observer.disable(); else app.observer.enable(); }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
 
     // --- синхронізація UI з реальним станом плеєра ---
     player.on('play',  () => setToggleIcon(true));
