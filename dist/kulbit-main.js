@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T13:49:02.218Z */
+/* Kulbit Webflow — зібрано 2026-05-26T13:54:05.315Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -243,6 +243,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildDesktopAnimations();
       app.buildOurClients('desktop');                    // is-our-clients (ADR-013)
       app.buildProjects('desktop');                      // is-projects: свап відео (ADR-015, поки лише desktop)
+      app.restoreSection();                              // персистентність: відновити позицію (reload/перебудова)
       return () => app.teardownHero();
     });
     app.mm.add('(min-width: 768px) and (max-width: 991px)', () => {       // tablet 768-991
@@ -250,6 +251,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildTabletHero();
       app.buildOurClients('tablet');                     // is-our-clients (ADR-013, таблет)
       app.buildProjects('tablet');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
+      app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
     });
     app.mm.add('(max-width: 479px)', () => {             // mobile-портрет ≤479
@@ -257,6 +259,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildTabletHero();
       app.buildOurClients('mobile');                     // is-our-clients (ADR-013, мобілка: shiftN [2,1,2])
       app.buildProjects('mobile');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
+      app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
     });
     // 480-767 — горизонтальна мобілка: hero не будуємо (попап landscape, 06-responsive.js)
@@ -920,6 +923,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
 
     if (instant) {
       app.currentSectionIndex = clamped;
+      app.persistSection();
       app.applyStackingPositions();
       if (target.isOurClients && target.oc) target.oc.reset(dir < 0); // миттєвий стан секції
       if (target.isProjects && target.pv) target.pv.reset(dir < 0);   // миттєвий стан свапу відео
@@ -929,6 +933,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
 
     app.isAnimating = true;
     app.currentSectionIndex = clamped;
+    app.persistSection();
     // Відео нової поточної секції — показуємо ОДРАЗУ (грає, поки секція наповзає/відкривається).
     if (app.showCurrentVideo) app.showCurrentVideo();
     const finish = () => {
@@ -965,6 +970,23 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
     }
     console.log('[Kulbit-Nav] секція', prev, '→', clamped);
+  };
+
+  // 08b — Персистентність позиції (sessionStorage): reload (і перебудова брейкпоінта) не скидають
+  //        на hero. Зберігаємо при кожному goToSection; відновлюємо в кінці matchMedia-гілки.
+  const SECTION_KEY = 'kulbit-section';
+  app.persistSection = () => {
+    try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {}
+  };
+  app.restoreSection = () => {
+    let saved = NaN;
+    try { saved = parseInt(sessionStorage.getItem(SECTION_KEY), 10); } catch (e) {}
+    if (isNaN(saved) || saved <= 0 || saved >= app.sections.length) return; // 0/немає → лишаємось на hero
+    app.goToSection(saved, true, 1); // миттєвий перехід на збережену секцію
+    // hero-таймлайн на кроці 0 лишив би хедер видимим над секцією → ховаємо, якщо відновились не на hero
+    const header = document.querySelector('[data-kulbit-header]');
+    if (header) gsap.set(header, { autoAlpha: 0 });
+    console.log('[Kulbit-Persist] відновлено секцію', saved);
   };
 
   // 09 — advance: вирішує — наступний КРОК у поточній секції чи перехід на СЕКЦІЮ.
