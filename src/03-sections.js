@@ -84,12 +84,14 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.resetHeroState();
       app.buildTabletHero();
       app.buildOurClients('tablet');                     // is-our-clients (ADR-013, таблет)
+      app.buildProjects('tablet');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
       return () => app.teardownHero();
     });
     app.mm.add('(max-width: 479px)', () => {             // mobile-портрет ≤479
       app.resetHeroState();
       app.buildTabletHero();
       app.buildOurClients('mobile');                     // is-our-clients (ADR-013, мобілка: shiftN [2,1,2])
+      app.buildProjects('mobile');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
       return () => app.teardownHero();
     });
     // 480-767 — горизонтальна мобілка: hero не будуємо (попап landscape, 06-responsive.js)
@@ -487,14 +489,17 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
   };
 
-  // 03c — Спец-секція is-projects (ADR-015): вертикальний свап відео + фінальна END-картинка.
-  //   Лише DESKTOP (таблет/мобілка — інша анімація, згодом). Інтегровано в snap як section.oc.
-  //   Елементи свапу = прямі діти [data-kulbit-project-group] (відео + остання [data-kulbit-project-end]).
-  //   Активний елемент height 100%, решта 0; усі зсунуті по y на -(індекс*гэп) — гэп лишається
-  //   між відео, але над активним ховається за верхній край (немає порожньої смуги зверху).
-  //   Свап: поточне 100→0, наступне 0→100 (виростає знизу). Згорнуте відео → скидається на постер
-  //   (пауза, час 0, контроли off). Прогрес-бар по індексу (як is-our-clients). Лінія: миттєво 0 при
-  //   prepare, 0→1/N на enter (поява), плавно→0 на collapse (сповзання) — та сама логіка, що в oc.
+  // 03c — Спец-секція is-projects (ADR-015 + ADR-016 re-approach): вертикальний свап відео + END-картинка.
+  //   АДАПТИВНА через ВІКНО (WIN): desktop WIN=1 (одне відео на повний екран), tablet/mobile WIN=3
+  //   (видно 3 картки). Елементи свапу = прямі діти [data-kulbit-project-group] (відео + остання
+  //   [data-kulbit-project-end]). Видиме вікно [state .. state+WIN-1]: блоки height = slotH, решта 0;
+  //   уся колонка зсунута по y на -(state*гэп) — гэп лишається між картками, але над вікном ховається
+  //   за верхній край. maxState = total - WIN: останній стан — коли END став нижнім видимим → далі
+  //   свайп = перехід на наступну секцію (advance). Свап: верхній блок вікна height→0 (стискається),
+  //   знизу виростає наступний 0→slotH (розширюється), проміжні зсуваються вгору.
+  //   Desktop тримає height у % (CSS картки реагують); tablet/mobile — px slotH + flex:none, бо там
+  //   картки flex:1 1 0% (flex-grow ділив би висоту порівну й ігнорував height). Згорнуте відео →
+  //   скидається на постер (пауза, час 0, контроли off). Прогрес-бар: (state+1)/(maxState+1).
   app.buildProjects = (mode) => {
     const group = document.querySelector('[data-kulbit-project-group]');
     if (!group) return;
@@ -502,6 +507,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (!section) { console.warn('[Kulbit-PV] секцію групи не знайдено'); return; }
 
     const STEP = app.config.scrollDuration, EASE = app.config.ease;
+    const isDesktop = mode === 'desktop';
     group.style.overflow = 'hidden';
     const gap = () => parseFloat(getComputedStyle(group).rowGap) || 0;
 
@@ -521,7 +527,23 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const total = items.length;
     if (total < 2) { console.warn('[Kulbit-PV] замало елементів свапу'); return; }
 
-    // Прогрес-бар: трек 15% + дочірня лінія-заповнення 100% (.pv-fill), ширина (state+1)/total
+    // ВІКНО: desktop — 1 блок на повний екран; tablet/mobile — до 3 видимих блоків (захист min для малого total).
+    const WIN = isDesktop ? 1 : Math.min(3, total);
+    const maxState = total - WIN; // останній стан — коли END (остання дитина) став нижнім видимим
+    // tablet/mobile: перебити flex:1 1 0% (інакше flex-grow ділить висоту порівну й ігнорує height)
+    if (!isDesktop) gsap.set(els, { flex: 'none' });
+
+    // slotH (лише tablet/mobile): доступна висота вьюпорта під групою / WIN
+    const slotHeight = () => {
+      const wrapper = app.wrapper || document.querySelector('#smooth-wrapper');
+      const wrapperH = wrapper ? wrapper.clientHeight : window.innerHeight;
+      const gTop = group.getBoundingClientRect().top;
+      const padB = parseFloat(getComputedStyle(section.el).paddingBottom) || 0; // section.el, НЕ section
+      const availH = wrapperH - gTop - padB;
+      return (availH - (WIN - 1) * gap()) / WIN;
+    };
+
+    // Прогрес-бар: трек 15% + дочірня лінія-заповнення 100% (.pv-fill), ширина (state+1)/(maxState+1)
     const bar = section.el.querySelector('.section-progresbar');
     let fill = null;
     if (bar) {
@@ -533,7 +555,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
     const setFill = (s, animate) => {
       if (!fill) return;
-      const w = ((s + 1) / total * 100) + '%';
+      const w = ((s + 1) / (maxState + 1) * 100) + '%';
       if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
       else gsap.set(fill, { width: w });
     };
@@ -551,16 +573,28 @@ console.log('[Kulbit] 03-sections.js завантажено');
     };
     const resetOthers = (active) => items.forEach((r, i) => { if (i !== active) resetItem(r); });
 
-    // Зсув колонки: над активним s є s згорнутих (0px) + s гэпів → зсув = -(s*гэп)
+    // Зсув колонки: над вікном s блоків (0px) + s гэпів → зсув = -(s*гэп)
     const offsetFor = (s) => -s * gap();
-    // Дискретний стан без анімації
-    const applyState = (s) => {
-      items.forEach((r, i) => gsap.set(r.el, { height: i === s ? '100%' : '0%' }));
-      gsap.set(els, { y: offsetFor(s) });
+    // Висоти блоків для стану s: вікно [s..s+WIN-1] видиме, решта згорнута.
+    //   desktop — у % (картка на повний екран); tablet/mobile — px slotH.
+    const setHeights = (s, animate) => {
+      const sh = isDesktop ? null : slotHeight();
+      items.forEach((r, i) => {
+        const inWindow = i >= s && i < s + WIN;
+        const h = isDesktop ? (inWindow ? '100%' : '0%') : (inWindow ? sh : 0);
+        if (animate) gsap.to(r.el, { height: h, duration: STEP, ease: EASE });
+        else gsap.set(r.el, { height: h });
+      });
     };
+    const moveColumn = (s, animate) => {
+      if (animate) gsap.to(els, { y: offsetFor(s), duration: STEP, ease: EASE });
+      else gsap.set(els, { y: offsetFor(s) });
+    };
+    // Дискретний стан без анімації
+    const applyState = (s) => { setHeights(s, false); moveColumn(s, false); };
 
     let state = 0;
-    applyState(0); resetOthers(0); prepareFill(); // старт: відео 0 видиме, решта на постері, лінія 0
+    applyState(0); resetOthers(0); prepareFill(); // старт: вікно з 0, решта на постері, лінія 0
 
     section.isProjects = true;
     section.pv = {
@@ -568,26 +602,26 @@ console.log('[Kulbit] 03-sections.js завантажено');
       prepare() { state = 0; applyState(0); resetOthers(0); prepareFill(); }, // наїзд: приховано (лінія 0)
       enter()   { state = 0; applyState(0); resetOthers(0); enterFill(); },   // повне накриття: лінія 0→1/N
       collapse() { collapseFill(); },                                          // секція сповзає геть → лінія плавно в 0
-      reset(toEnd) { state = toEnd ? total - 1 : 0; applyState(state); setFill(state, false); resetOthers(state); }, // миттєвий стан
-      // вихід із desktop-брейкпоінта: повертаємо натуральний лейаут (висоти/трансформ зі step
-      //   живуть поза matchMedia-контекстом, тож чистимо вручну — щоб таблет/мобілка були чисті)
-      dispose() { group.style.overflow = ''; gsap.set(els, { clearProps: 'height,transform' }); if (fill) fill.remove(); },
+      reset(toEnd) { state = toEnd ? maxState : 0; applyState(state); setFill(state, false); resetOthers(state); }, // миттєвий стан
+      // вихід із брейкпоінта: повертаємо натуральний лейаут (висоти/трансформ/flex зі step живуть
+      //   поза matchMedia-контекстом, тож чистимо вручну — щоб інший брейкпоінт стартував чистим)
+      dispose() { group.style.overflow = ''; gsap.set(els, { clearProps: 'height,transform,flex' }); if (fill) fill.remove(); },
       step(dir) {
-        const ns = Math.max(0, Math.min(total - 1, state + dir));
-        if (ns === state) return false;        // межа секції → advance викличе goToSection
-        const out = items[state];
+        const ns = Math.max(0, Math.min(maxState, state + dir));
+        if (ns === state) return false;        // межа вікна → advance викличе goToSection (перехід секції)
+        const goingDown = ns > state;
+        const out = goingDown ? items[state] : items[state + WIN - 1]; // блок, що виходить з вікна → на постер
         state = ns;
         app.isAnimating = true;
-        resetItem(out);                        // що згортається → на постер
-        gsap.to(out.el,    { height: '0%',   duration: STEP, ease: EASE });
-        gsap.to(items[ns].el, { height: '100%', duration: STEP, ease: EASE });
-        gsap.to(els,       { y: offsetFor(ns), duration: STEP, ease: EASE });
+        resetItem(out);
+        setHeights(ns, true);                  // верх схлоп / новий виріст / проміжні без змін
+        moveColumn(ns, true);                  // колонка плавно зсувається
         setFill(ns, true);
         gsap.delayedCall(STEP, () => { app.isAnimating = false; });
         return true;
       }
     };
-    console.log('[Kulbit-PV] desktop готовий, елементів свапу:', total, '| гэп', Math.round(gap()) + 'px');
+    console.log('[Kulbit-PV]', mode, 'готовий | елементів:', total, '| WIN', WIN, '| maxState', maxState, '| гэп', Math.round(gap()) + 'px');
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
