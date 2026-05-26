@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T12:58:02.589Z */
+/* Kulbit Webflow — зібрано 2026-05-26T13:12:01.536Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1730,13 +1730,12 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';
-      // Розмутити НАДІЙНО: синхронно в gesture + ще раз ПІСЛЯ старту (до play setMuted не встигає —
-      //   Vimeo стартує з muted з embed). Іконку оновить подія volumechange (за реальним станом).
-      player.setMuted(false);
+      // play() ПЕРШИМ -- стартує надійно (muted-стан embed дозволено), ПОТІМ знімаємо mute.
+      //   setMuted(false) ДО play ламав запуск на iOS (unmuted-play у gesture відхилявся).
+      //   Один клік по data-kulbit-play = старт + звук. Іконку оновить подія volumechange.
       player.play()
         .then(() => player.setMuted(false))
-        .then(() => player.setVolume(1))
-        .catch((e) => console.warn('[Kulbit-PV] play/unmute:', e && e.name));
+        .catch((e) => console.warn('[Kulbit-PV] play:', e && e.name));
     };
 
     // --- готовність: cover + ресайз-спостерігач + тривалість + початкова гучність ---
