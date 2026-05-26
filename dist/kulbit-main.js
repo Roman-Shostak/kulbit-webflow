@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T12:53:03.797Z */
+/* Kulbit Webflow — зібрано 2026-05-26T12:58:02.589Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1730,9 +1730,13 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';
-      player.setMuted(false);  // стартуємо зі звуком (embed може бути muted); клік = user-gesture, iOS дозволяє
-      setVolumeIcon(1);        // іконка → volume (не mute)
-      player.play();
+      // Розмутити НАДІЙНО: синхронно в gesture + ще раз ПІСЛЯ старту (до play setMuted не встигає —
+      //   Vimeo стартує з muted з embed). Іконку оновить подія volumechange (за реальним станом).
+      player.setMuted(false);
+      player.play()
+        .then(() => player.setMuted(false))
+        .then(() => player.setVolume(1))
+        .catch((e) => console.warn('[Kulbit-PV] play/unmute:', e && e.name));
     };
 
     // --- готовність: cover + ресайз-спостерігач + тривалість + початкова гучність ---
@@ -1805,6 +1809,10 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     player.on('play',  () => setToggleIcon(true));
     player.on('pause', () => setToggleIcon(false));
     player.on('ended', () => setToggleIcon(false));
+    // Іконка звуку — завжди за РЕАЛЬНИМ станом (а не за припущенням): muted → mute-іконка, інакше рівень
+    player.on('volumechange', (data) => {
+      player.getMuted().then((m) => setVolumeIcon(m ? 0 : (data && data.volume != null ? data.volume : 1)));
+    });
     player.on('timeupdate', (data) => {
       if (seekDrag) return;
       if (data.duration) duration = data.duration;
