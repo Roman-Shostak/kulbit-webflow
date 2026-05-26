@@ -117,10 +117,7 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     app.registerSections();   // визначено у 03-sections.js
     app.setupStacking();      // стекінг-лейаут: секції абсолютом одна над одною (ADR-010)
     app.registerSteps();      // reveal-кроки [data-kulbit-step]
-    // Observer МАЄ піднятися завжди — якщо matchMedia-колбек (build*/restoreSection) кине
-    //   помилку, без цього зник би скрол на всьому сайті. Логуємо помилку, але не валимо ініт.
-    try { app.registerAnimations(); }
-    catch (e) { console.error('[Kulbit-Core] ❌ registerAnimations кинув помилку (Observer все одно піднімаємо):', e); }
+    app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
     app.setupObserver();
     window.addEventListener('resize', app.handleResize);
     console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');

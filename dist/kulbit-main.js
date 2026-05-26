@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T05:47:36.341Z */
+/* Kulbit Webflow — зібрано 2026-05-26T07:38:41.196Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -153,10 +153,7 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     app.registerSections();   // визначено у 03-sections.js
     app.setupStacking();      // стекінг-лейаут: секції абсолютом одна над одною (ADR-010)
     app.registerSteps();      // reveal-кроки [data-kulbit-step]
-    // Observer МАЄ піднятися завжди — якщо matchMedia-колбек (build*/restoreSection) кине
-    //   помилку, без цього зник би скрол на всьому сайті. Логуємо помилку, але не валимо ініт.
-    try { app.registerAnimations(); }
-    catch (e) { console.error('[Kulbit-Core] ❌ registerAnimations кинув помилку (Observer все одно піднімаємо):', e); }
+    app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
     app.setupObserver();
     window.addEventListener('resize', app.handleResize);
     console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');
@@ -245,24 +242,19 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.resetHeroState();
       app.buildDesktopAnimations();
       app.buildOurClients('desktop');                    // is-our-clients (ADR-013)
-      app.buildProjects('desktop');                      // is-projects: свап відео вікном 1 (ADR-015)
-      app.restoreSection();                              // персистентність: повернутись на збережену секцію
+      app.buildProjects('desktop');                      // is-projects: свап відео (ADR-015, поки лише desktop)
       return () => app.teardownHero();
     });
     app.mm.add('(min-width: 768px) and (max-width: 991px)', () => {       // tablet 768-991
       app.resetHeroState();
       app.buildTabletHero();
       app.buildOurClients('tablet');                     // is-our-clients (ADR-013, таблет)
-      app.buildProjects('tablet');                       // is-projects: свап вікном 3 (ADR-015)
-      app.restoreSection();                              // персистентність: повернутись на збережену секцію
       return () => app.teardownHero();
     });
     app.mm.add('(max-width: 479px)', () => {             // mobile-портрет ≤479
       app.resetHeroState();
       app.buildTabletHero();
       app.buildOurClients('mobile');                     // is-our-clients (ADR-013, мобілка: shiftN [2,1,2])
-      app.buildProjects('mobile');                       // is-projects: свап вікном 3 (ADR-015)
-      app.restoreSection();                              // персистентність: повернутись на збережену секцію
       return () => app.teardownHero();
     });
     // 480-767 — горизонтальна мобілка: hero не будуємо (попап landscape, 06-responsive.js)
@@ -661,15 +653,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
   };
 
   // 03c — Спец-секція is-projects (ADR-015): вертикальний свап відео + фінальна END-картинка.
-  //   ЄДИНА механіка для всіх брейкпоінтів через розмір ВІКНА (WIN): desktop WIN=1 (одне відео на
-  //   повну), tablet/mobile WIN=3 (видно 3 блоки). Стан = старт вікна; вікно [state..state+WIN-1].
-  //   Свап: верхній елемент вікна схлопується (height→0), знизу виростає наступний; уся колонка
-  //   зсунута по y на -(state*гэп) — гэп лишається між блоками, але над активним ховається за край.
-  //   Висота блоків — від #smooth-wrapper (видимий вьюпорт) мінус простір над групою і padding-bottom
-  //   секції (cover-блоки не лізуть під padding; коректно й на мобілці, де 100vh > видимого). Resize —
-  //   динамічно. Згорнуте відео → на постер. tablet/mobile: ПОЯВА — блоки по черзі виїздять знизу +
-  //   opacity (на enter). Прогрес-бар скрізь: трек 15% + лінія .pv-fill, ширина (state+1)/станів.
-  //   Межа: останній видимий = END → advance до сусідньої секції.
+  //   Лише DESKTOP (таблет/мобілка — інша анімація, згодом). Інтегровано в snap як section.oc.
+  //   Елементи свапу = прямі діти [data-kulbit-project-group] (відео + остання [data-kulbit-project-end]).
+  //   Активний елемент height 100%, решта 0; усі зсунуті по y на -(індекс*гэп) — гэп лишається
+  //   між відео, але над активним ховається за верхній край (немає порожньої смуги зверху).
+  //   Свап: поточне 100→0, наступне 0→100 (виростає знизу). Згорнуте відео → скидається на постер
+  //   (пауза, час 0, контроли off). Прогрес-бар по індексу (як is-our-clients). Лінія: миттєво 0 при
+  //   prepare, 0→1/N на enter (поява), плавно→0 на collapse (сповзання) — та сама логіка, що в oc.
   app.buildProjects = (mode) => {
     const group = document.querySelector('[data-kulbit-project-group]');
     if (!group) return;
@@ -677,10 +667,6 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (!section) { console.warn('[Kulbit-PV] секцію групи не знайдено'); return; }
 
     const STEP = app.config.scrollDuration, EASE = app.config.ease;
-    const WIN = (mode === 'tablet' || mode === 'mobile') ? 3 : 1; // скільки блоків видно одночасно
-    const ENTRANCE = WIN > 1;        // tablet/mobile: поява блоків по черзі (виїзд знизу + opacity)
-    const RISE = 48, STAGGER = 0.12; // параметри появи
-    const wrap = app.wrapper || document.documentElement;
     group.style.overflow = 'hidden';
     const gap = () => parseFloat(getComputedStyle(group).rowGap) || 0;
 
@@ -688,7 +674,6 @@ console.log('[Kulbit] 03-sections.js завантажено');
       const isEnd   = el.matches('[data-kulbit-project-end]') || !!el.querySelector('[data-kulbit-project-end]');
       const isVideo = !isEnd && (el.matches('[data-kulbit-project-video]') || !!el.querySelector('[data-kulbit-project-video]'));
       const iframe  = el.querySelector('iframe');
-      el.style.flex = 'none';
       return {
         el, isVideo, isEnd,
         poster:   el.querySelector('[data-kulbit-poster]'),
@@ -700,11 +685,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const els = items.map((r) => r.el);
     const total = items.length;
     if (total < 2) { console.warn('[Kulbit-PV] замало елементів свапу'); return; }
-    const win = Math.min(WIN, total);
-    const endIdx = items.findIndex((r) => r.isEnd);
-    const maxState = Math.max(0, (endIdx < 0 ? total - 1 : endIdx) - win + 1); // останній стан: END = останній видимий
 
-    // Прогрес-бар: трек 15% + дочірня лінія .pv-fill 100%, ширина (state+1)/(maxState+1)
+    // Прогрес-бар: трек 15% + дочірня лінія-заповнення 100% (.pv-fill), ширина (state+1)/total
     const bar = section.el.querySelector('.section-progresbar');
     let fill = null;
     if (bar) {
@@ -716,13 +698,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
     const setFill = (s, animate) => {
       if (!fill) return;
-      const wd = ((s + 1) / (maxState + 1) * 100) + '%';
-      if (animate) gsap.to(fill, { width: wd, duration: STEP, ease: EASE });
-      else gsap.set(fill, { width: wd });
+      const w = ((s + 1) / total * 100) + '%';
+      if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
+      else gsap.set(fill, { width: w });
     };
-    const prepareFill  = () => { if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); } };
-    const enterFill    = () => { prepareFill(); setFill(0, true); };
-    const collapseFill = () => { if (fill) { gsap.killTweensOf(fill); gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); } };
+    const prepareFill  = () => { if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); } };           // миттєво→0
+    const enterFill    = () => { prepareFill(); setFill(0, true); };                                                  // 0→1/N (поява)
+    const collapseFill = () => { if (fill) { gsap.killTweensOf(fill); gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); } }; // плавно→0 (сповзання)
 
     // Скидання відео-елемента на початковий стан (постер + пауза + час 0 + контроли off)
     const resetItem = (rec) => {
@@ -732,74 +714,45 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (rec.bigPlay)  gsap.set(rec.bigPlay, { autoAlpha: 1 });
       if (rec.controls) rec.controls.style.display = 'none';
     };
-    const inWin = (i, s) => i >= s && i < s + win;
-    const resetOutside = (s) => items.forEach((r, i) => { if (!inWin(i, s)) resetItem(r); });
+    const resetOthers = (active) => items.forEach((r, i) => { if (i !== active) resetItem(r); });
 
-    // Доступна висота під блоки = видимий вьюпорт (#smooth-wrapper) - простір над групою - padding-bottom
-    const availH = () => {
-      const gTop = group.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
-      const padB = parseFloat(getComputedStyle(section.el).paddingBottom) || 0;
-      return Math.max(0, wrap.clientHeight - gTop - padB);
-    };
-    const slotH = () => Math.max(0, (availH() - (win - 1) * gap()) / win);
+    // Зсув колонки: над активним s є s згорнутих (0px) + s гэпів → зсув = -(s*гэп)
     const offsetFor = (s) => -s * gap();
-
-    // Виставити стан вікна (heights + зсув). animate=false — миттєво.
-    const applyState = (s, animate) => {
-      const sH = slotH();
-      items.forEach((r, i) => {
-        const h = inWin(i, s) ? sH : 0;
-        if (animate) gsap.to(r.el, { height: h, duration: STEP, ease: EASE });
-        else gsap.set(r.el, { height: h, autoAlpha: 1, y: offsetFor(s) });
-      });
-      if (animate) gsap.to(els, { y: offsetFor(s), duration: STEP, ease: EASE });
-    };
-
-    // Поява: tablet/mobile — блоки вікна по черзі виїздять знизу + opacity; desktop — просто показ.
-    const playEntrance = () => {
-      if (!ENTRANCE) { applyState(0, false); return; }
-      const sH = slotH();
-      items.forEach((r, i) => {
-        if (inWin(i, 0)) gsap.set(r.el, { height: sH, autoAlpha: 0, y: RISE });
-        else gsap.set(r.el, { height: 0, autoAlpha: 1, y: 0 });
-      });
-      gsap.to(items.slice(0, win).map((r) => r.el), { autoAlpha: 1, y: 0, duration: STEP, ease: 'power2.out', stagger: STAGGER });
+    // Дискретний стан без анімації
+    const applyState = (s) => {
+      items.forEach((r, i) => gsap.set(r.el, { height: i === s ? '100%' : '0%' }));
+      gsap.set(els, { y: offsetFor(s) });
     };
 
     let state = 0;
-    applyState(0, false); resetOutside(0); prepareFill(); // старт: вікно 0 видиме, решта на постері, лінія 0
-
-    // Динамічна висота: на resize перевиставити поточний стан (поза анімацією кроку)
-    const onResize = () => { if (!app.isAnimating) applyState(state, false); };
-    window.addEventListener('resize', onResize);
+    applyState(0); resetOthers(0); prepareFill(); // старт: відео 0 видиме, решта на постері, лінія 0
 
     section.isProjects = true;
     section.pv = {
       get state() { return state; },
-      prepare() {                                   // наїзд: приховано (для появи), лінія 0
-        state = 0; applyState(0, false); resetOutside(0); prepareFill();
-        if (ENTRANCE) gsap.set(items.slice(0, win).map((r) => r.el), { autoAlpha: 0 });
-      },
-      enter() { state = 0; resetOutside(0); playEntrance(); enterFill(); }, // повне накриття: поява + лінія 0→перший
-      collapse() { collapseFill(); },               // секція сповзає геть → лінія плавно в 0
-      reset(toEnd) { state = toEnd ? maxState : 0; applyState(state, false); setFill(state, false); resetOutside(state); }, // миттєвий стан
-      // вихід із брейкпоінта: знімаємо resize-слухач + повертаємо натуральний лейаут (heights/transform
-      //   зі step живуть поза matchMedia-контекстом, тож чистимо вручну — щоб інший брейкпоінт був чистий)
-      dispose() { window.removeEventListener('resize', onResize); group.style.overflow = ''; gsap.set(els, { clearProps: 'height,transform' }); if (fill) fill.remove(); },
+      prepare() { state = 0; applyState(0); resetOthers(0); prepareFill(); }, // наїзд: приховано (лінія 0)
+      enter()   { state = 0; applyState(0); resetOthers(0); enterFill(); },   // повне накриття: лінія 0→1/N
+      collapse() { collapseFill(); },                                          // секція сповзає геть → лінія плавно в 0
+      reset(toEnd) { state = toEnd ? total - 1 : 0; applyState(state); setFill(state, false); resetOthers(state); }, // миттєвий стан
+      // вихід із desktop-брейкпоінта: повертаємо натуральний лейаут (висоти/трансформ зі step
+      //   живуть поза matchMedia-контекстом, тож чистимо вручну — щоб таблет/мобілка були чисті)
+      dispose() { group.style.overflow = ''; gsap.set(els, { clearProps: 'height,transform' }); if (fill) fill.remove(); },
       step(dir) {
-        const ns = Math.max(0, Math.min(maxState, state + dir));
-        if (ns === state) return false;             // межа секції → advance викличе goToSection
-        const leaving = dir > 0 ? items[state] : items[state + win - 1]; // хто виходить із вікна
-        if (leaving) resetItem(leaving);            // згорнуте відео → на постер
+        const ns = Math.max(0, Math.min(total - 1, state + dir));
+        if (ns === state) return false;        // межа секції → advance викличе goToSection
+        const out = items[state];
         state = ns;
         app.isAnimating = true;
-        applyState(state, true);
-        setFill(state, true);
+        resetItem(out);                        // що згортається → на постер
+        gsap.to(out.el,    { height: '0%',   duration: STEP, ease: EASE });
+        gsap.to(items[ns].el, { height: '100%', duration: STEP, ease: EASE });
+        gsap.to(els,       { y: offsetFor(ns), duration: STEP, ease: EASE });
+        setFill(ns, true);
         gsap.delayedCall(STEP, () => { app.isAnimating = false; });
         return true;
       }
     };
-    console.log('[Kulbit-PV] ' + mode + ' готовий: елементів ' + total + ', вікно ' + win + ', станів ' + (maxState + 1));
+    console.log('[Kulbit-PV] desktop готовий, елементів свапу:', total, '| гэп', Math.round(gap()) + 'px');
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
@@ -904,27 +857,6 @@ console.log('[Kulbit] 03-sections.js завантажено');
   //      Вниз — ціль наповзає знизу (yPercent 100→0) поверх поточної (вона лишається на місці);
   //      вгору — поточна сповзає вниз (0→100), відкриваючи попередню (вона під нею на 0).
   //      dir задає стан кроків нової секції: згори (dir>0) → на початку; знизу (dir<0) → у кінці.
-
-  // 08a — Персистентність позиції (sessionStorage): зберігаємо індекс поточної секції, щоб
-  //       reload і зміна брейкпоінта (поворот девайса) НЕ скидали на hero. Рівень — СЕКЦІЯ
-  //       (внутрішній крок секції стартує з початку: restore = миттєвий goToSection до збереженої).
-  const SECTION_KEY = 'kulbit-section';
-  app.persistSection = () => { try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {} };
-  app.restoreSection = () => {
-    try {
-      let saved = parseInt(sessionStorage.getItem(SECTION_KEY) || '0', 10);
-      if (isNaN(saved)) saved = 0;
-      saved = Math.max(0, Math.min(saved, app.sections.length - 1));
-      if (saved > 0) {
-        app.goToSection(saved, true, 1); // миттєвий стрибок на збережену секцію (без анімації)
-        // Не на hero → хедер ховаємо (бо hero-таймлайн на кроці 0 лишив би його видимим над секцією).
-        //   Керування хедером і далі в hero-таймлайні: при поверненні вгору reverse проявить його.
-        const header = document.querySelector('[data-kulbit-header]');
-        if (header) gsap.set(header, { autoAlpha: 0 });
-      }
-    } catch (e) { console.error('[Kulbit-Nav] restoreSection помилка:', e); }
-  };
-
   app.goToSection = (index, instant, dir) => {
     if (!app.sections.length) return;
 
@@ -950,7 +882,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
 
     if (instant) {
-      app.currentSectionIndex = clamped; app.persistSection();
+      app.currentSectionIndex = clamped;
       app.applyStackingPositions();
       if (target.isOurClients && target.oc) target.oc.reset(dir < 0); // миттєвий стан секції
       if (target.isProjects && target.pv) target.pv.reset(dir < 0);   // миттєвий стан свапу відео
@@ -959,7 +891,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     }
 
     app.isAnimating = true;
-    app.currentSectionIndex = clamped; app.persistSection();
+    app.currentSectionIndex = clamped;
     // Відео нової поточної секції — показуємо ОДРАЗУ (грає, поки секція наповзає/відкривається).
     if (app.showCurrentVideo) app.showCurrentVideo();
     const finish = () => {
@@ -1067,7 +999,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const maxStep = section.isAnimated ? 1 : (section.isStepped ? section.steps.length : 0);
     const step = Math.max(0, Math.min(targetStep || 0, maxStep));
 
-    app.currentSectionIndex = clamped; app.persistSection();
+    app.currentSectionIndex = clamped;
     app.currentStep = step;
 
     // Стекінг-позиції (анімовано)
@@ -1194,18 +1126,7 @@ console.log('[Kulbit] 06-responsive.js завантажено');
     // — Виставити стан сайту за поточною орієнтацією.
     //   Перебудову hero при зміні брейкпоінта/орієнтації робить gsap.matchMedia (03-sections.js),
     //   тут лише попап + Observer + прапорець landscapeBlocked (його поважає логіка відео).
-    const inFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
-
     const apply = () => {
-      if (inFullscreen()) {
-        // відео на весь екран (можливо в landscape — orientation lock у 10-project-video.js):
-        //   попап НЕ показуємо, навігацію вимикаємо, відео НЕ паузимо (його дивляться).
-        app.landscapeBlocked = false;
-        popup.style.display = 'none';
-        if (app.observer) app.observer.disable();
-        console.log('[Kulbit-Responsive] fullscreen — попап OFF (відео на весь екран)');
-        return;
-      }
       if (mql.matches) {
         // landscape-телефон: попап ON, fullpage OFF, усе відео на паузі
         app.landscapeBlocked = true;
@@ -1224,9 +1145,6 @@ console.log('[Kulbit] 06-responsive.js завантажено');
     };
 
     mql.addEventListener('change', apply);
-    // Вхід/вихід fullscreen теж перевизначає стан (фуллскрін у landscape не має тригерити попап)
-    document.addEventListener('fullscreenchange', apply);
-    document.addEventListener('webkitfullscreenchange', apply);
     // Початковий стан — наступним тіком, щоб 08-video.js встиг заповнити app.videos
     setTimeout(apply, 0);
     console.log('[Kulbit-Responsive] детект landscape активний (max-height', maxH + 'px)');
@@ -1622,11 +1540,6 @@ console.log('[Kulbit] 10-project-video.js завантажено');
   const POPUP_DUR = 0.2;     // поява/зникання попапа гучності
   const FADE_DUR = 0.3;      // згасання постера/кнопки на старті
 
-  // Реєстр усіх відео-блоків + правило «грає лише ОДНЕ»: коли одне стартує (подія play),
-  //   решта скидаються на постер (пауза + час 0 + thumb). Заповнюється в initProjectVideo.
-  const registry = [];
-  const pauseOthers = (current) => registry.forEach((r) => { if (r.player !== current) r.resetToPoster(); });
-
   // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО корінь; зайве ховає overflow:hidden.
   //      Рахуємо від кореня (не вьюпорта) — тримається й у fullscreen.
   const applyCover = (box, iframe) => {
@@ -1741,19 +1654,13 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     };
 
     // --- fullscreen (корінь розгортається; контроли лишаються, бо вони його діти) ---
-    //   На вхід — лочимо орієнтацію в landscape (мобілка/таблет відкривають відео горизонтально;
-    //   на десктопі lock відхиляється — ловимо catch). На вихід — анлок. Попап «поверни телефон»
-    //   (06-responsive.js) поважає fullscreen і НЕ зʼявляється, поки відео на весь екран.
     const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
-    const lockLandscape = () => { try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} };
-    const unlockOrientation = () => { try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {} };
     const enterFs = () => {
-      const req = root.requestFullscreen || root.webkitRequestFullscreen;
-      if (!req) { console.warn('[Kulbit-PV] fullscreen API недоступне на цьому пристрої'); return; }
-      Promise.resolve(req.call(root)).then(lockLandscape).catch(() => {});
+      if (root.requestFullscreen) root.requestFullscreen();
+      else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
+      else console.warn('[Kulbit-PV] fullscreen API недоступне на цьому пристрої');
     };
     const exitFs = () => {
-      unlockOrientation();
       if (document.exitFullscreen) document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     };
@@ -1769,10 +1676,6 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (seekFill) seekFill.style.width = '0%';
       if (buffer) buffer.style.width = '0%';
     };
-
-    // Скидання на постер (для правила «грає лише одне»): пауза + час 0 + початковий стан
-    const resetToPoster = () => { player.pause(); player.setCurrentTime(0); showInitial(); };
-    registry.push({ player, resetToPoster });
 
     // --- перший старт: ховаємо постер + кнопку, показуємо панель ---
     const startPlayback = () => {
@@ -1840,12 +1743,11 @@ console.log('[Kulbit] 10-project-video.js завантажено');
 
     // --- fullscreen ---
     if (fsBtn) fsBtn.addEventListener('click', () => { if (fsElement()) exitFs(); else enterFs(); });
-    const onFsChange = () => { applyCover(root, iframe); if (!fsElement()) unlockOrientation(); }; // вихід будь-яким способом (Esc/back) → анлок
-    document.addEventListener('fullscreenchange', onFsChange);
-    document.addEventListener('webkitfullscreenchange', onFsChange);
+    document.addEventListener('fullscreenchange', () => applyCover(root, iframe));
+    document.addEventListener('webkitfullscreenchange', () => applyCover(root, iframe));
 
     // --- синхронізація UI з реальним станом плеєра ---
-    player.on('play',  () => { setToggleIcon(true); pauseOthers(player); }); // грає лише одне: інші → на постер
+    player.on('play',  () => setToggleIcon(true));
     player.on('pause', () => setToggleIcon(false));
     player.on('ended', () => setToggleIcon(false));
     player.on('timeupdate', (data) => {

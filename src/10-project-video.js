@@ -32,11 +32,6 @@ console.log('[Kulbit] 10-project-video.js завантажено');
   const POPUP_DUR = 0.2;     // поява/зникання попапа гучності
   const FADE_DUR = 0.3;      // згасання постера/кнопки на старті
 
-  // Реєстр усіх відео-блоків + правило «грає лише ОДНЕ»: коли одне стартує (подія play),
-  //   решта скидаються на постер (пауза + час 0 + thumb). Заповнюється в initProjectVideo.
-  const registry = [];
-  const pauseOthers = (current) => registry.forEach((r) => { if (r.player !== current) r.resetToPoster(); });
-
   // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО корінь; зайве ховає overflow:hidden.
   //      Рахуємо від кореня (не вьюпорта) — тримається й у fullscreen.
   const applyCover = (box, iframe) => {
@@ -151,19 +146,13 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     };
 
     // --- fullscreen (корінь розгортається; контроли лишаються, бо вони його діти) ---
-    //   На вхід — лочимо орієнтацію в landscape (мобілка/таблет відкривають відео горизонтально;
-    //   на десктопі lock відхиляється — ловимо catch). На вихід — анлок. Попап «поверни телефон»
-    //   (06-responsive.js) поважає fullscreen і НЕ зʼявляється, поки відео на весь екран.
     const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
-    const lockLandscape = () => { try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} };
-    const unlockOrientation = () => { try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {} };
     const enterFs = () => {
-      const req = root.requestFullscreen || root.webkitRequestFullscreen;
-      if (!req) { console.warn('[Kulbit-PV] fullscreen API недоступне на цьому пристрої'); return; }
-      Promise.resolve(req.call(root)).then(lockLandscape).catch(() => {});
+      if (root.requestFullscreen) root.requestFullscreen();
+      else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
+      else console.warn('[Kulbit-PV] fullscreen API недоступне на цьому пристрої');
     };
     const exitFs = () => {
-      unlockOrientation();
       if (document.exitFullscreen) document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     };
@@ -179,10 +168,6 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (seekFill) seekFill.style.width = '0%';
       if (buffer) buffer.style.width = '0%';
     };
-
-    // Скидання на постер (для правила «грає лише одне»): пауза + час 0 + початковий стан
-    const resetToPoster = () => { player.pause(); player.setCurrentTime(0); showInitial(); };
-    registry.push({ player, resetToPoster });
 
     // --- перший старт: ховаємо постер + кнопку, показуємо панель ---
     const startPlayback = () => {
@@ -250,12 +235,11 @@ console.log('[Kulbit] 10-project-video.js завантажено');
 
     // --- fullscreen ---
     if (fsBtn) fsBtn.addEventListener('click', () => { if (fsElement()) exitFs(); else enterFs(); });
-    const onFsChange = () => { applyCover(root, iframe); if (!fsElement()) unlockOrientation(); }; // вихід будь-яким способом (Esc/back) → анлок
-    document.addEventListener('fullscreenchange', onFsChange);
-    document.addEventListener('webkitfullscreenchange', onFsChange);
+    document.addEventListener('fullscreenchange', () => applyCover(root, iframe));
+    document.addEventListener('webkitfullscreenchange', () => applyCover(root, iframe));
 
     // --- синхронізація UI з реальним станом плеєра ---
-    player.on('play',  () => { setToggleIcon(true); pauseOthers(player); }); // грає лише одне: інші → на постер
+    player.on('play',  () => setToggleIcon(true));
     player.on('pause', () => setToggleIcon(false));
     player.on('ended', () => setToggleIcon(false));
     player.on('timeupdate', (data) => {
