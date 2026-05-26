@@ -31,6 +31,11 @@ console.log('[Kulbit] 10-project-video.js завантажено');
   const ICON_DUR = 0.15;     // перемикання іконок (play/pause, volume/mute)
   const POPUP_DUR = 0.2;     // поява/зникання попапа гучності
   const FADE_DUR = 0.3;      // згасання постера/кнопки на старті
+  const COMPACT_MAX = 991;   // ≤ цього (tablet/mobile): fullscreen через Vimeo SDK + кнопка звуку = мут
+
+  // На tablet/mobile (≤991): div-fullscreen не працює на iOS → беремо нативний fullscreen відео
+  //   через Vimeo SDK; повзунок гучності iOS ігнорує → кнопка звуку стає простою мут-кнопкою.
+  const isCompact = () => window.innerWidth <= COMPACT_MAX;
 
   // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО корінь; зайве ховає overflow:hidden.
   //      Рахуємо від кореня (не вьюпорта) — тримається й у fullscreen.
@@ -148,6 +153,12 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     // --- fullscreen (корінь розгортається; контроли лишаються, бо вони його діти) ---
     const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
     const enterFs = () => {
+      // tablet/mobile: нативний fullscreen відео через Vimeo SDK (div-fullscreen не працює на iOS;
+      //   вихід — нативною кнопкою плеєра). Desktop: розгортаємо корінь із власними контролами.
+      if (isCompact() && player.requestFullscreen) {
+        player.requestFullscreen().catch((e) => console.warn('[Kulbit-PV] SDK fullscreen відхилено:', e && e.name));
+        return;
+      }
       if (root.requestFullscreen) root.requestFullscreen();
       else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
       else console.warn('[Kulbit-PV] fullscreen API недоступне на цьому пристрої');
@@ -213,8 +224,13 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       });
     }
 
-    // --- гучність: попап (клік по динаміку) + клік поза попапом закриває ---
+    // --- гучність: tablet/mobile — проста мут-кнопка; desktop — попап із повзунком ---
     if (volume) volume.addEventListener('click', (e) => {
+      // tablet/mobile: тільки mute/unmute (рівень гучності iOS ігнорує, повзунок безсенсовий)
+      if (isCompact()) {
+        player.getMuted().then((m) => { player.setMuted(!m); setVolumeIcon(!m ? 0 : 1); });
+        return;
+      }
       if (popup && popup.contains(e.target)) return; // клік усередині попапа не перемикає
       if (popupOpen) closePopup(); else openPopup();
     });
