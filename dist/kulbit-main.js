@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T13:21:28.486Z */
+/* Kulbit Webflow — зібрано 2026-05-26T13:40:14.273Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1730,11 +1730,10 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';
-      // Як hero (08-video.js, працює на iOS): play() ПЕРШИМ, одразу setMuted(false) СИНХРОННО
-      //   в тому ж gesture. Порядок критичний: setMuted ДО play Vimeo скидає назад на muted;
-      //   setMuted у .then (async) — поза gesture, iOS паузить. Синхронно після play — звук.
+      // Перший клік -- лише старт. iOS стартує inline-відео muted й не дає розмутити в тому ж
+      //   кліку (на відміну від hero, що ВЖЕ грає). Звук вмикається окремою кнопкою гучності/мут
+      //   (unmute граючого відео в gesture — там працює, як у hero). На desktop play() дає звук одразу.
       player.play();
-      player.setMuted(false);
     };
 
     // --- готовність: cover + ресайз-спостерігач + тривалість + початкова гучність ---
