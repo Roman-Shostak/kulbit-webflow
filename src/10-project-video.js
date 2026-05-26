@@ -151,13 +151,19 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     };
 
     // --- fullscreen (корінь розгортається; контроли лишаються, бо вони його діти) ---
+    //   На вхід — лочимо орієнтацію в landscape (мобілка/таблет відкривають відео горизонтально;
+    //   на десктопі lock відхиляється — ловимо catch). На вихід — анлок. Попап «поверни телефон»
+    //   (06-responsive.js) поважає fullscreen і НЕ зʼявляється, поки відео на весь екран.
     const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+    const lockLandscape = () => { try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} };
+    const unlockOrientation = () => { try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {} };
     const enterFs = () => {
-      if (root.requestFullscreen) root.requestFullscreen();
-      else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
-      else console.warn('[Kulbit-PV] fullscreen API недоступне на цьому пристрої');
+      const req = root.requestFullscreen || root.webkitRequestFullscreen;
+      if (!req) { console.warn('[Kulbit-PV] fullscreen API недоступне на цьому пристрої'); return; }
+      Promise.resolve(req.call(root)).then(lockLandscape).catch(() => {});
     };
     const exitFs = () => {
+      unlockOrientation();
       if (document.exitFullscreen) document.exitFullscreen();
       else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     };
@@ -244,8 +250,9 @@ console.log('[Kulbit] 10-project-video.js завантажено');
 
     // --- fullscreen ---
     if (fsBtn) fsBtn.addEventListener('click', () => { if (fsElement()) exitFs(); else enterFs(); });
-    document.addEventListener('fullscreenchange', () => applyCover(root, iframe));
-    document.addEventListener('webkitfullscreenchange', () => applyCover(root, iframe));
+    const onFsChange = () => { applyCover(root, iframe); if (!fsElement()) unlockOrientation(); }; // вихід будь-яким способом (Esc/back) → анлок
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
 
     // --- синхронізація UI з реальним станом плеєра ---
     player.on('play',  () => { setToggleIcon(true); pauseOthers(player); }); // грає лише одне: інші → на постер

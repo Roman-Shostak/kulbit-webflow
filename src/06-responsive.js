@@ -35,7 +35,18 @@ console.log('[Kulbit] 06-responsive.js завантажено');
     // — Виставити стан сайту за поточною орієнтацією.
     //   Перебудову hero при зміні брейкпоінта/орієнтації робить gsap.matchMedia (03-sections.js),
     //   тут лише попап + Observer + прапорець landscapeBlocked (його поважає логіка відео).
+    const inFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+
     const apply = () => {
+      if (inFullscreen()) {
+        // відео на весь екран (можливо в landscape — orientation lock у 10-project-video.js):
+        //   попап НЕ показуємо, навігацію вимикаємо, відео НЕ паузимо (його дивляться).
+        app.landscapeBlocked = false;
+        popup.style.display = 'none';
+        if (app.observer) app.observer.disable();
+        console.log('[Kulbit-Responsive] fullscreen — попап OFF (відео на весь екран)');
+        return;
+      }
       if (mql.matches) {
         // landscape-телефон: попап ON, fullpage OFF, усе відео на паузі
         app.landscapeBlocked = true;
@@ -54,6 +65,9 @@ console.log('[Kulbit] 06-responsive.js завантажено');
     };
 
     mql.addEventListener('change', apply);
+    // Вхід/вихід fullscreen теж перевизначає стан (фуллскрін у landscape не має тригерити попап)
+    document.addEventListener('fullscreenchange', apply);
+    document.addEventListener('webkitfullscreenchange', apply);
     // Початковий стан — наступним тіком, щоб 08-video.js встиг заповнити app.videos
     setTimeout(apply, 0);
     console.log('[Kulbit-Responsive] детект landscape активний (max-height', maxH + 'px)');
