@@ -185,12 +185,10 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';
-      // play() ПЕРШИМ -- стартує надійно (muted-стан embed дозволено), ПОТІМ знімаємо mute.
-      //   setMuted(false) ДО play ламав запуск на iOS (unmuted-play у gesture відхилявся).
-      //   Один клік по data-kulbit-play = старт + звук. Іконку оновить подія volumechange.
-      player.play()
-        .then(() => player.setMuted(false))
-        .catch((e) => console.warn('[Kulbit-PV] play:', e && e.name));
+      // Просто play() у gesture -- стартує надійно. Звук має йти НАТИВНО з embed (без muted=1):
+      //   будь-яка маніпуляція setMuted навколо play на iOS ламає запуск/паузить. Якщо відео
+      //   замутане -- прибрати `muted` з Vimeo-embed URL у Webflow (а не «лагодити» кодом).
+      player.play().catch((e) => console.warn('[Kulbit-PV] play:', e && e.name));
     };
 
     // --- готовність: cover + ресайз-спостерігач + тривалість + початкова гучність ---
