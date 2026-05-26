@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T05:15:27.194Z */
+/* Kulbit Webflow — зібрано 2026-05-26T05:41:07.675Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -153,7 +153,10 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     app.registerSections();   // визначено у 03-sections.js
     app.setupStacking();      // стекінг-лейаут: секції абсолютом одна над одною (ADR-010)
     app.registerSteps();      // reveal-кроки [data-kulbit-step]
-    app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
+    // Observer МАЄ піднятися завжди — якщо matchMedia-колбек (build*/restoreSection) кине
+    //   помилку, без цього зник би скрол на всьому сайті. Логуємо помилку, але не валимо ініт.
+    try { app.registerAnimations(); }
+    catch (e) { console.error('[Kulbit-Core] ❌ registerAnimations кинув помилку (Observer все одно піднімаємо):', e); }
     app.setupObserver();
     window.addEventListener('resize', app.handleResize);
     console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');
@@ -908,16 +911,18 @@ console.log('[Kulbit] 03-sections.js завантажено');
   const SECTION_KEY = 'kulbit-section';
   app.persistSection = () => { try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {} };
   app.restoreSection = () => {
-    let saved = parseInt(sessionStorage.getItem(SECTION_KEY) || '0', 10);
-    if (isNaN(saved)) saved = 0;
-    saved = Math.max(0, Math.min(saved, app.sections.length - 1));
-    if (saved > 0) {
-      app.goToSection(saved, true, 1); // миттєвий стрибок на збережену секцію (без анімації)
-      // Не на hero → хедер ховаємо (бо hero-таймлайн на кроці 0 лишив би його видимим над секцією).
-      //   Керування хедером і далі в hero-таймлайні: при поверненні вгору reverse проявить його.
-      const header = document.querySelector('[data-kulbit-header]');
-      if (header) gsap.set(header, { autoAlpha: 0 });
-    }
+    try {
+      let saved = parseInt(sessionStorage.getItem(SECTION_KEY) || '0', 10);
+      if (isNaN(saved)) saved = 0;
+      saved = Math.max(0, Math.min(saved, app.sections.length - 1));
+      if (saved > 0) {
+        app.goToSection(saved, true, 1); // миттєвий стрибок на збережену секцію (без анімації)
+        // Не на hero → хедер ховаємо (бо hero-таймлайн на кроці 0 лишив би його видимим над секцією).
+        //   Керування хедером і далі в hero-таймлайні: при поверненні вгору reverse проявить його.
+        const header = document.querySelector('[data-kulbit-header]');
+        if (header) gsap.set(header, { autoAlpha: 0 });
+      }
+    } catch (e) { console.error('[Kulbit-Nav] restoreSection помилка:', e); }
   };
 
   app.goToSection = (index, instant, dir) => {

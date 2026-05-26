@@ -743,16 +743,18 @@ console.log('[Kulbit] 03-sections.js завантажено');
   const SECTION_KEY = 'kulbit-section';
   app.persistSection = () => { try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {} };
   app.restoreSection = () => {
-    let saved = parseInt(sessionStorage.getItem(SECTION_KEY) || '0', 10);
-    if (isNaN(saved)) saved = 0;
-    saved = Math.max(0, Math.min(saved, app.sections.length - 1));
-    if (saved > 0) {
-      app.goToSection(saved, true, 1); // миттєвий стрибок на збережену секцію (без анімації)
-      // Не на hero → хедер ховаємо (бо hero-таймлайн на кроці 0 лишив би його видимим над секцією).
-      //   Керування хедером і далі в hero-таймлайні: при поверненні вгору reverse проявить його.
-      const header = document.querySelector('[data-kulbit-header]');
-      if (header) gsap.set(header, { autoAlpha: 0 });
-    }
+    try {
+      let saved = parseInt(sessionStorage.getItem(SECTION_KEY) || '0', 10);
+      if (isNaN(saved)) saved = 0;
+      saved = Math.max(0, Math.min(saved, app.sections.length - 1));
+      if (saved > 0) {
+        app.goToSection(saved, true, 1); // миттєвий стрибок на збережену секцію (без анімації)
+        // Не на hero → хедер ховаємо (бо hero-таймлайн на кроці 0 лишив би його видимим над секцією).
+        //   Керування хедером і далі в hero-таймлайні: при поверненні вгору reverse проявить його.
+        const header = document.querySelector('[data-kulbit-header]');
+        if (header) gsap.set(header, { autoAlpha: 0 });
+      }
+    } catch (e) { console.error('[Kulbit-Nav] restoreSection помилка:', e); }
   };
 
   app.goToSection = (index, instant, dir) => {
