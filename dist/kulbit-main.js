@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-26T05:41:07.675Z */
+/* Kulbit Webflow — зібрано 2026-05-26T05:47:36.341Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -738,7 +738,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     // Доступна висота під блоки = видимий вьюпорт (#smooth-wrapper) - простір над групою - padding-bottom
     const availH = () => {
       const gTop = group.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
-      const padB = parseFloat(getComputedStyle(section).paddingBottom) || 0;
+      const padB = parseFloat(getComputedStyle(section.el).paddingBottom) || 0;
       return Math.max(0, wrap.clientHeight - gTop - padB);
     };
     const slotH = () => Math.max(0, (availH() - (win - 1) * gap()) / win);
