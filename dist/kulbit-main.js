@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-25T21:29:46.869Z */
+/* Kulbit Webflow — зібрано 2026-05-26T04:42:07.888Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1562,6 +1562,11 @@ console.log('[Kulbit] 10-project-video.js завантажено');
   const POPUP_DUR = 0.2;     // поява/зникання попапа гучності
   const FADE_DUR = 0.3;      // згасання постера/кнопки на старті
 
+  // Реєстр усіх відео-блоків + правило «грає лише ОДНЕ»: коли одне стартує (подія play),
+  //   решта скидаються на постер (пауза + час 0 + thumb). Заповнюється в initProjectVideo.
+  const registry = [];
+  const pauseOthers = (current) => registry.forEach((r) => { if (r.player !== current) r.resetToPoster(); });
+
   // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО корінь; зайве ховає overflow:hidden.
   //      Рахуємо від кореня (не вьюпорта) — тримається й у fullscreen.
   const applyCover = (box, iframe) => {
@@ -1699,6 +1704,10 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (buffer) buffer.style.width = '0%';
     };
 
+    // Скидання на постер (для правила «грає лише одне»): пауза + час 0 + початковий стан
+    const resetToPoster = () => { player.pause(); player.setCurrentTime(0); showInitial(); };
+    registry.push({ player, resetToPoster });
+
     // --- перший старт: ховаємо постер + кнопку, показуємо панель ---
     const startPlayback = () => {
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
@@ -1769,7 +1778,7 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     document.addEventListener('webkitfullscreenchange', () => applyCover(root, iframe));
 
     // --- синхронізація UI з реальним станом плеєра ---
-    player.on('play',  () => setToggleIcon(true));
+    player.on('play',  () => { setToggleIcon(true); pauseOthers(player); }); // грає лише одне: інші → на постер
     player.on('pause', () => setToggleIcon(false));
     player.on('ended', () => setToggleIcon(false));
     player.on('timeupdate', (data) => {
