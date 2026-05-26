@@ -403,7 +403,7 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
 ```
 
-Підставляєш короткий хеш свіжого коміту (напр. `@86b1c33`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `86b1c33`** (is-projects свап вікном 3 на tablet/mobile + фікс slotH; ADR-016 п.1 повернено) — для commit-pinned тесту коду підставляй саме `@86b1c33`. _Стабільна база: hero + is-our-clients (усі девайси) + is-projects свап (desktop + tablet/mobile), підтверджено Romanom. Решта ADR-016 (персистентність/landscape/«одне відео») — у git-історії `50fb693`..`1500d68` для re-approach по одній фічі._
+Підставляєш короткий хеш свіжого коміту (напр. `@a0d1a7c`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `a0d1a7c`** — для commit-pinned тесту коду підставляй саме `@a0d1a7c`. _Стабільна база: hero + is-our-clients (усі девайси) + is-projects свап (desktop + tablet/mobile) + контролі відео на tablet/mobile (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + персистентність позиції секції (sessionStorage, reload не скидає на hero). Усе підтверджено Romanom. Решта ADR-016 (auto-landscape fullscreen, «одне відео») — попереду; історія re-approach у git `50fb693`..`1500d68`._
 
 > ⚠️ **Урок (регресія скролу 26.05.2026 — для майбутнього re-approach):** у `buildProjects` `section` = запис `app.sections` `{el, index, …}`, а НЕ DOM-елемент. `getComputedStyle(section)` кинув помилку → `registerAnimations` (matchMedia) впав ДО `setupObserver` → зник скрол на всьому сайті. Уроки: (1) у `buildProjects`/`build*` для DOM-операцій брати `section.el`, не `section`; (2) варто залишити захист — `init` обгортає `registerAnimations` у try/catch, щоб помилка білду не вбивала Observer (було в `c7b8470`, відкочено разом з рештою — повернути при re-approach).
 
@@ -473,21 +473,25 @@ chore: оновив build.js
 ### Наступні кроки
 
 - [~] **Крок 6:** анімації решти 7 секцій + footer — рушій готовий (ADR-009 атрибути або reveal-кроки `[data-kulbit-step]`), чекає верстки Romana
-- [x] **is-projects tablet/mobile свап вікном 3** — ✅ зроблено (ADR-016 п.1, `a34408b`+`86b1c33`)
-- [~] **Елементи керування відео на tablet/mobile** — iOS-обмеження: ховати на iOS кнопку fullscreen (API не працює на `<div>`) + повзунок гучності (`setVolume` ігнорується iOS) → ПОТОЧНИЙ крок
-- [ ] **is-projects:** решта ADR-016 — персистентність позиції, «грає одне відео», landscape/fullscreen — по ОДНІЙ фічі з тестом
+- [x] **is-projects tablet/mobile свап вікном 3** — ✅ (ADR-016 п.1, `a34408b`+`86b1c33`)
+- [x] **Елементи керування відео на tablet/mobile** — ✅ fullscreen через Vimeo SDK (нативний iOS), кнопка звуку = mute-toggle, перший клік play стартує (звук — окремою кнопкою, бо iOS не дає unmute у кліку старту), desktop fullscreen блокує навігацію-скрол (`64225c8`..`f032eab`)
+- [x] **Персистентність позиції секції** — ✅ sessionStorage, reload/перебудова не скидають на hero (ADR-016 п.5, `8e932f8`+`a0d1a7c`)
+- [ ] **Поворот+fullscreen UX** (крок D/B/C): у fullscreen поворот паузить відео (B); авто-landscape при fullscreen (C); поворот+вихід з fullscreen скидає на hero з кривими анімаціями (D)
+- [ ] **is-projects:** решта ADR-016 — «грає одне відео»
 - [ ] **Крок 9:** попап-форма (`07-popup-form.js`)
 - [ ] **Крок 10:** фінальний поліш; **Крок 11:** клієнтське демо; **Крок 12:** продакшн-домен
 
 ### 🔖 Точка відновлення (26.05.2026 — стабільна база)
 
-**Поточний стабільний стан = `86b1c33`.** Hero + is-our-clients (всі девайси) + is-projects (DESKTOP плеєр+свап+прогрес + **tablet/mobile свап вікном 3**) + скрол над відео — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~97.6 KB.
+**Поточний стабільний стан = `a0d1a7c`.** Hero + is-our-clients (всі девайси) + is-projects (DESKTOP плеєр+свап+прогрес + **tablet/mobile свап вікном 3**) + скрол над відео + **контролі відео на tablet/mobile** (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + **персистентність позиції** (sessionStorage) — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~98 KB.
 
 **Як сюди дійшли:** початковий батч ADR-016 (свап+персистентність+landscape разом) внесли багато проблем + регресію скролу → відкат до `f0928a9` (`3978c4d`). Потім **по одній фічі з тестом**: повернули лише свап вікном 3 (`a34408b` + фікс slotH `86b1c33`). **Урок (memory [[incremental-not-batched]]):** фічі по ОДНІЙ. Ще урок (memory [[mobile-zoom-before-css-debug]]): мобільний візуальний зсув на одному девайсі — спершу перевір `visualViewport.scale` (застряглий zoom), потім CSS.
 
 **Стан верстки:** 9 зупинок розмічені; hero + is-our-clients + is-projects готові. Решта секцій + footer — Roman верстає. Атрибути hero та Vimeo-embed — у `docs/hero-reference.md`. ⚠️ дефект верстки на майбутнє: `.hero-video-mask`/`.hero-video-wrapper` мають `overflow:visible` — варто `hidden` (cover-iframe інакше може розпирати документ на iOS).
 
-**Далі:** елементи керування відео на tablet/mobile — ховати на iOS fullscreen-кнопку (API не працює на `<div>`) + повзунок гучності (`setVolume` ігнорується iOS). Потім решта ADR-016 (персистентність, «одне відео», landscape). Експериментальний код — git-історія `50fb693`..`1500d68`.
+**Далі (поворот+fullscreen UX):** B — у fullscreen поворот паузить відео (наша pause-by-visibility реагує на orientationchange); C — авто-landscape при fullscreen (`orientation.lock`); D — поворот+вихід із fullscreen скидає на hero з кривими анімаціями. Потім «грає одне відео». Експериментальний код re-approach — git `50fb693`..`1500d68`.
+
+**Урок про iOS+Vimeo звук (memory [[ios-vimeo-unmute]]):** розмутити Vimeo на iOS можна лише на відео, що ВЖЕ грає, синхронно в gesture (як hero `background=1`). Відео, що стартує з кліку, в тому ж кліку розмутити не можна — звук лише окремою кнопкою.
 
 **Не забути:** після пушу — purge jsDelivr (для тесту — commit-pinned `@<hash>`, бо `@main` лагає до 12 год). Webflow: секції лишай `relative` + `top:0` + `height:100vh` + `overflow:hidden` (JS перебиває на absolute на проді).
 
