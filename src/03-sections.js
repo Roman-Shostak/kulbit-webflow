@@ -239,6 +239,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
           app.isAnimating = false;
           if (ns === MAX) {
             app.currentSectionIndex = 1; app.currentStep = 0;
+            app.persistSection(); // зберегти позицію (hero → секція 1 іде в обхід goToSection)
             if (app.updateVideoVisibility) app.updateVideoVisibility();
             const s1 = app.sections[1]; // секція 1 (is-our-clients) накрила — запускаємо її появу
             if (s1 && s1.isOurClients && s1.oc) s1.oc.enter();
@@ -258,6 +259,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       // OC на старті (або секція 1 звичайна) → відмотуємо хореографію hero (16:9 повертається)
       app.isAnimating = true;
       app.currentSectionIndex = 0;
+      app.persistSection(); // зберегти позицію (секція 1 → hero іде в обхід goToSection)
       if (s1 && s1.isOurClients && s1.oc) s1.oc.prepare(); // приховати заголовки/прогрес для наступної появи
       if (app.updateVideoVisibility) app.updateVideoVisibility();
       tl.tweenTo(labels[MAX - 1], { onComplete: () => { app.isAnimating = false; app.currentStep = MAX - 1; } });
@@ -817,10 +819,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     let saved = NaN;
     try { saved = parseInt(sessionStorage.getItem(SECTION_KEY), 10); } catch (e) {}
     if (isNaN(saved) || saved <= 0 || saved >= app.sections.length) return; // 0/немає → лишаємось на hero
+    // Hero (секція 0) приводимо в КІНЕЦЬ його анімації — щоб хедер був схований ШТАТНО (через
+    //   таймлайн), а не зависав вручну (інакше при поверненні вгору на hero хедер не повертався).
+    //   Скрол угору потім коректно відмотає hero й поверне хедер.
+    const hero = app.sections[0];
+    if (hero.isAnimated && hero.timeline) hero.timeline.progress(1).pause();
+    if (hero.isTabletHero && hero.tabletTL) hero.tabletTL.progress(1).pause();
     app.goToSection(saved, true, 1); // миттєвий перехід на збережену секцію
-    // hero-таймлайн на кроці 0 лишив би хедер видимим над секцією → ховаємо, якщо відновились не на hero
-    const header = document.querySelector('[data-kulbit-header]');
-    if (header) gsap.set(header, { autoAlpha: 0 });
     console.log('[Kulbit-Persist] відновлено секцію', saved);
   };
 
