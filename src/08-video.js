@@ -100,6 +100,7 @@ console.log('[Kulbit] 08-video.js завантажено');
 
   window.KulbitApp.showCurrentVideo = () => {
     const app = window.KulbitApp;
+    if (app.videoFullscreen) return;  // відео у fullscreen — не чіпаємо (грає незалежно від навігації)
     if (app.landscapeBlocked) return; // landscape-попап — нічого не граємо
     (app.videos || []).forEach((rec) => {
       if (rec.sectionIndex === app.currentSectionIndex) rec.show();
@@ -108,6 +109,7 @@ console.log('[Kulbit] 08-video.js завантажено');
 
   window.KulbitApp.hideOtherVideos = () => {
     const app = window.KulbitApp;
+    if (app.videoFullscreen) return;  // відео у fullscreen — не паузимо (поворот не має глушити перегляд)
     (app.videos || []).forEach((rec) => {
       if (app.landscapeBlocked || rec.sectionIndex !== app.currentSectionIndex) rec.hide();
     });

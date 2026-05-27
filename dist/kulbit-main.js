@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T10:48:39.230Z */
+/* Kulbit Webflow — зібрано 2026-05-27T10:54:18.548Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1365,6 +1365,7 @@ console.log('[Kulbit] 08-video.js завантажено');
 
   window.KulbitApp.showCurrentVideo = () => {
     const app = window.KulbitApp;
+    if (app.videoFullscreen) return;  // відео у fullscreen — не чіпаємо (грає незалежно від навігації)
     if (app.landscapeBlocked) return; // landscape-попап — нічого не граємо
     (app.videos || []).forEach((rec) => {
       if (rec.sectionIndex === app.currentSectionIndex) rec.show();
@@ -1373,6 +1374,7 @@ console.log('[Kulbit] 08-video.js завантажено');
 
   window.KulbitApp.hideOtherVideos = () => {
     const app = window.KulbitApp;
+    if (app.videoFullscreen) return;  // відео у fullscreen — не паузимо (поворот не має глушити перегляд)
     (app.videos || []).forEach((rec) => {
       if (app.landscapeBlocked || rec.sectionIndex !== app.currentSectionIndex) rec.hide();
     });
@@ -1802,6 +1804,8 @@ console.log('[Kulbit] 10-project-video.js завантажено');
 
     // --- перший старт: ховаємо постер + кнопку, показуємо панель ---
     const startPlayback = () => {
+      // МОМЕНТАЛЬНО на клік (до play-події, без лагу) скидаємо решту project-відео на постер
+      registry.forEach((other) => { if (other.player !== player) other.resetToInitial(); });
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';

@@ -192,6 +192,8 @@ console.log('[Kulbit] 10-project-video.js завантажено');
 
     // --- перший старт: ховаємо постер + кнопку, показуємо панель ---
     const startPlayback = () => {
+      // МОМЕНТАЛЬНО на клік (до play-події, без лагу) скидаємо решту project-відео на постер
+      registry.forEach((other) => { if (other.player !== player) other.resetToInitial(); });
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
       if (bigPlay) gsap.to(bigPlay, { autoAlpha: 0, duration: FADE_DUR });
       if (controls) controls.style.display = 'flex';
