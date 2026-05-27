@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(~/.ssh/**)",
+      "Read(./credentials*)",
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(git push --force:*)"
+    ],
+    "allow": ["Bash(git status:*)", "Bash(git diff:*)", "Bash(npm test:*)"],
+    "ask": ["Bash(git push:*)", "Bash(npm publish:*)"],
+    "defaultMode": "bypassPermissions"
+  },
+  "skipDangerousModePermissionPrompt": true
+}
