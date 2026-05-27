@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T10:14:14.648Z */
+/* Kulbit Webflow — зібрано 2026-05-27T10:47:01.997Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1638,6 +1638,9 @@ console.log('[Kulbit] 10-project-video.js завантажено');
   //   через Vimeo SDK; повзунок гучності iOS ігнорує → кнопка звуку стає простою мут-кнопкою.
   const isCompact = () => window.innerWidth <= COMPACT_MAX;
 
+  // Реєстр усіх project-плеєрів — щоб грало лише ОДНЕ відео: старт нового скидає решту на постер.
+  const registry = [];
+
   // 01 — cover: розмір iframe так, щоб 16:9 ПОКРИВАЛО корінь; зайве ховає overflow:hidden.
   //      Рахуємо від кореня (не вьюпорта) — тримається й у fullscreen.
   const applyCover = (box, iframe) => {
@@ -1781,6 +1784,13 @@ console.log('[Kulbit] 10-project-video.js завантажено');
       if (buffer) buffer.style.width = '0%';
     };
 
+    // --- повне скидання у початковий стан (для «грає лише одне»): пауза + час 0 + постер ---
+    const resetToInitial = () => {
+      player.pause();
+      player.setCurrentTime(0);
+      showInitial();
+    };
+
     // --- перший старт: ховаємо постер + кнопку, показуємо панель ---
     const startPlayback = () => {
       if (poster)  gsap.to(poster,  { autoAlpha: 0, duration: FADE_DUR });
@@ -1867,7 +1877,11 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     document.addEventListener('webkitfullscreenchange', onFsChange);
 
     // --- синхронізація UI з реальним станом плеєра ---
-    player.on('play',  () => setToggleIcon(true));
+    player.on('play',  () => {
+      setToggleIcon(true);
+      // грає лише ОДНЕ: старт цього відео скидає решту project-відео на початковий стан (постер)
+      registry.forEach((other) => { if (other.player !== player) other.resetToInitial(); });
+    });
     player.on('pause', () => setToggleIcon(false));
     player.on('ended', () => setToggleIcon(false));
     // Іконка звуку — завжди за РЕАЛЬНИМ станом (а не за припущенням): muted → mute-іконка, інакше рівень
@@ -1887,6 +1901,7 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     //   hide — пауза (секцію накрито / landscape); show — no-op (плей лише вручну).
     const sectionEl = root.closest('[data-kulbit-section]');
     const sectionIndex = sectionEl ? parseInt(sectionEl.getAttribute('data-section-index'), 10) : 0;
+    registry.push({ player, resetToInitial }); // реєструємо для «грає лише одне відео»
     return {
       player, sectionIndex,
       show: () => {},                 // кероване користувачем — НЕ автоплей
