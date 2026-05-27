@@ -627,9 +627,10 @@ console.log('[Kulbit] 03-sections.js завантажено');
   };
 
   // 03d — Спец-секція is-our-services: ГОРИЗОНТАЛЬНИЙ свап карток ([data-kulbit-hswipe-group]).
-  //   Заголовки скрамбляться глобально (11-scramble.js). Поява: група виїжджає знизу + opacity.
-  //   Свап: 1 свайп = група зсувається по x на (ширина картки + columnGap), показуючи наступну.
-  //   [Крок 1 «h2 стирається + картки вгору» — наступний під-крок B.2.]
+  //   Заголовки скрамбляться глобально (11-scramble.js). Стани:
+  //   • 0 (поява): група виїжджає знизу + opacity; h2 написаний.
+  //   • 1: h2 стирається скрамблом + його висота колапсує (flex сам підтягує картки вгору, геп = gap).
+  //   • 2..total: горизонтальний свап карток (1 свайп = картка), зсув по x на (ширина + columnGap).
   app.buildHSwipe = (mode) => {
     const section = app.sections.find((s) => s.el.classList.contains('is-our-services'));
     if (!section) return;
@@ -641,10 +642,26 @@ console.log('[Kulbit] 03-sections.js завантажено');
 
     const STEP = app.config.scrollDuration, EASE = app.config.ease;
     const RISE = 60; // px — група виїжджає знизу на появі
-    const maxState = total - 1; // WIN=1: одна картка на екран
+    const maxState = total; // 0 поява, 1 (h2 стерся + картки вгору), 2..total — свап карток
+    const swapIndexOf = (s) => Math.max(0, s - 1); // картка у вікні: state 0,1 → 0; 2 → 1; ...
     const gap = () => parseFloat(getComputedStyle(group).columnGap) || 0;
     const cardW = () => cards[0].getBoundingClientRect().width;
-    const shiftFor = (s) => -s * (cardW() + gap()); // зсув групи по x
+    const shiftFor = (s) => -swapIndexOf(s) * (cardW() + gap()); // зсув групи по x за індексом картки
+
+    // h2 (крок 1): стирається скрамблом (через app.scrambles) + його висота колапсує до 0 —
+    //   flex-контейнер сам підтягує картки вгору, геп label↔картки лишається = gap батька.
+    const h2 = section.el.querySelector('.text-size-section-h2');
+    const h2ctrl = () => (app.scrambles && h2) ? app.scrambles.get(h2) : null;
+    let origH2 = 0;
+    const measureH2 = () => { if (h2) { h2.style.height = ''; origH2 = h2.offsetHeight; } }; // натуральна висота
+    const setH2 = (collapsed, animate) => {
+      if (!h2) return;
+      const c = h2ctrl();
+      if (c) { if (collapsed) c.out(); else c.in(); }   // текст: стерти / написати
+      const h = collapsed ? 0 : origH2;                 // висота: колапс / повна
+      if (animate) gsap.to(h2, { height: h, duration: STEP, ease: EASE });
+      else gsap.set(h2, { height: h });
+    };
 
     // Прогрес-бар (як pv/oc): трек + дочірня лінія .hs-fill, ширина (state+1)/(maxState+1)
     const bar = section.el.querySelector('.section-progresbar');
@@ -667,34 +684,36 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const enterFill    = () => { prepareFill(); setFill(0, true); };
     const collapseFill = () => { if (fill) { gsap.killTweensOf(fill); gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); } };
 
-    const applyState = (s) => gsap.set(group, { x: shiftFor(s) });
-    const showCards   = () => gsap.fromTo(group, { y: RISE, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: STEP, ease: EASE });
-    const hideCards   = () => gsap.set(group, { autoAlpha: 0, y: RISE });
+    const moveX     = (s, animate) => { const x = shiftFor(s); animate ? gsap.to(group, { x, duration: STEP, ease: EASE }) : gsap.set(group, { x }); };
+    const showCards = () => gsap.fromTo(group, { y: RISE, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: STEP, ease: EASE });
+    const hideCards = () => gsap.set(group, { autoAlpha: 0, y: RISE });
 
     let state = 0;
     group.style.willChange = 'transform';
-    applyState(0); hideCards(); prepareFill(); // старт: картка 0, приховано, лінія 0
+    measureH2();                                          // натуральна висота h2 (для реверсу кроку 1)
+    moveX(0, false); setH2(false, false); hideCards(); prepareFill(); // старт: картка 0, h2 написаний, приховано
 
     section.isHSwipe = true;
     section.hswipe = {
       get state() { return state; },
-      prepare() { state = 0; applyState(0); hideCards(); prepareFill(); }, // наїзд: приховано
-      enter()   { state = 0; applyState(0); showCards(); enterFill(); },   // повне накриття: картки виїжджають знизу
+      prepare() { state = 0; moveX(0, false); setH2(false, false); hideCards(); prepareFill(); }, // наїзд: приховано
+      enter()   { state = 0; measureH2(); moveX(0, false); setH2(false, false); showCards(); enterFill(); }, // картки виїжджають; h2 пишеться глобально
       collapse() { collapseFill(); },
-      reset(toEnd) { state = toEnd ? maxState : 0; applyState(state); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); },
-      dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (fill) fill.remove(); },
+      reset(toEnd) { state = toEnd ? maxState : 0; measureH2(); moveX(state, false); setH2(state >= 1, false); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); },
+      dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (h2) h2.style.height = ''; if (fill) fill.remove(); },
       step(dir) {
         const ns = Math.max(0, Math.min(maxState, state + dir));
         if (ns === state) return false;        // межа → advance викличе goToSection
         state = ns;
         app.isAnimating = true;
-        gsap.to(group, { x: shiftFor(ns), duration: STEP, ease: EASE }); // горизонтальний зсув
+        setH2(ns >= 1, true);                  // крок 1: h2 стерся + висота 0 (картки flex-вгору); назад: написаний
+        moveX(ns, true);                       // свап карток (за swapIndex)
         setFill(ns, true);
         gsap.delayedCall(STEP, () => { app.isAnimating = false; });
         return true;
       }
     };
-    console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| зсув', Math.round(cardW() + gap()) + 'px');
+    console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| h2H', Math.round(origH2), '| зсув', Math.round(cardW() + gap()) + 'px');
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
