@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T16:27:29.378Z */
+/* Kulbit Webflow — зібрано 2026-05-27T16:38:11.911Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -816,6 +816,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     let fill = null;
     if (bar) {
       bar.style.position = 'relative';
+      bar.style.flexShrink = '0'; // інакше flex-v стискає бар (2px) до 0, бо контейнер переповнений
       bar.style.backgroundColor = 'rgba(253, 252, 252, 0.15)';
       fill = bar.querySelector('.hs-fill');
       if (!fill) { fill = document.createElement('div'); fill.className = 'hs-fill'; bar.appendChild(fill); }

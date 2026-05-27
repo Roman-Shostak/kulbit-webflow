@@ -651,6 +651,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     let fill = null;
     if (bar) {
       bar.style.position = 'relative';
+      bar.style.flexShrink = '0'; // інакше flex-v стискає бар (2px) до 0, бо контейнер переповнений
       bar.style.backgroundColor = 'rgba(253, 252, 252, 0.15)';
       fill = bar.querySelector('.hs-fill');
       if (!fill) { fill = document.createElement('div'); fill.className = 'hs-fill'; bar.appendChild(fill); }
