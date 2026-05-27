@@ -925,6 +925,33 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.goToSection(app.currentSectionIndex + dir, false, dir);
   };
 
+  // 09b — Кнопкове автопрогравання (ADR-003): швидко «прокрутити» УСІ кроки анімацій + переходи
+  //        секцій по черзі до цільової — як fullpage. Прискорюємо config на час послідовності,
+  //        блокуємо ввід (Observer). Зупиняємось щойно дійшли до цільової секції (на її початку).
+  app.autoAdvanceTo = (targetIndex) => {
+    const t = Math.max(0, Math.min(targetIndex, app.sections.length - 1));
+    if (app.autoPlaying || t === app.currentSectionIndex) return;
+    const dir = t > app.currentSectionIndex ? 1 : -1;
+    app.autoPlaying = true;
+    if (app.observer) app.observer.disable();          // ввід OFF на час прогортування
+    gsap.globalTimeline.timeScale(3);                  // прискорюємо ВСІ анімації (кроки + переходи) рівномірно
+    const finishAuto = () => {
+      gsap.globalTimeline.timeScale(1);
+      app.autoPlaying = false;
+      if (app.observer) app.observer.enable();
+      console.log('[Kulbit-Nav] авто-перехід завершено на секції', app.currentSectionIndex);
+    };
+    let guard = 0;
+    const tick = () => {                               // setTimeout — реальний час (не під timeScale)
+      if (app.currentSectionIndex === t) { finishAuto(); return; }
+      if (++guard > 300) { console.warn('[Kulbit-Nav] авто-перехід: ліміт кроків'); finishAuto(); return; }
+      if (app.isAnimating) { setTimeout(tick, 25); return; } // чекаємо завершення поточного кроку
+      app.advance(dir);                                      // наступний крок або перехід секції
+      setTimeout(tick, 50);
+    };
+    tick();
+  };
+
   // 10 — Перехід на секцію + конкретний крок (для кнопок data-target-step), стекінг.
   //      Секції 0..clamped виставляємо накладеними (y:0), решту — під екраном (y:100%).
   app.goToSectionStep = (index, targetStep) => {

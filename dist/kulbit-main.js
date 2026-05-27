@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T11:13:55.147Z */
+/* Kulbit Webflow — зібрано 2026-05-27T11:23:08.380Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1090,6 +1090,33 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.goToSection(app.currentSectionIndex + dir, false, dir);
   };
 
+  // 09b — Кнопкове автопрогравання (ADR-003): швидко «прокрутити» УСІ кроки анімацій + переходи
+  //        секцій по черзі до цільової — як fullpage. Прискорюємо config на час послідовності,
+  //        блокуємо ввід (Observer). Зупиняємось щойно дійшли до цільової секції (на її початку).
+  app.autoAdvanceTo = (targetIndex) => {
+    const t = Math.max(0, Math.min(targetIndex, app.sections.length - 1));
+    if (app.autoPlaying || t === app.currentSectionIndex) return;
+    const dir = t > app.currentSectionIndex ? 1 : -1;
+    app.autoPlaying = true;
+    if (app.observer) app.observer.disable();          // ввід OFF на час прогортування
+    gsap.globalTimeline.timeScale(3);                  // прискорюємо ВСІ анімації (кроки + переходи) рівномірно
+    const finishAuto = () => {
+      gsap.globalTimeline.timeScale(1);
+      app.autoPlaying = false;
+      if (app.observer) app.observer.enable();
+      console.log('[Kulbit-Nav] авто-перехід завершено на секції', app.currentSectionIndex);
+    };
+    let guard = 0;
+    const tick = () => {                               // setTimeout — реальний час (не під timeScale)
+      if (app.currentSectionIndex === t) { finishAuto(); return; }
+      if (++guard > 300) { console.warn('[Kulbit-Nav] авто-перехід: ліміт кроків'); finishAuto(); return; }
+      if (app.isAnimating) { setTimeout(tick, 25); return; } // чекаємо завершення поточного кроку
+      app.advance(dir);                                      // наступний крок або перехід секції
+      setTimeout(tick, 50);
+    };
+    tick();
+  };
+
   // 10 — Перехід на секцію + конкретний крок (для кнопок data-target-step), стекінг.
   //      Секції 0..clamped виставляємо накладеними (y:0), решту — під екраном (y:100%).
   app.goToSectionStep = (index, targetStep) => {
@@ -1171,11 +1198,9 @@ console.log('[Kulbit] 04-navigation.js завантажено');
       console.log('[Kulbit-Nav] клік → секція', index, 'крок', stepAttr);
       app.goToSectionStep(index, parseInt(stepAttr, 10));
     } else {
-      // dir обовʼязковий: без нього goToSection іде в гілку «вгору» й сповзає hero (видно фон).
-      //   Завжди ПЛАВНО: goToSection виставляє проміжні секції в стек і плавно наводить ціль (стрибок).
-      const dir = index > app.currentSectionIndex ? 1 : -1;
+      // Швидко «прокручуємо» всі кроки анімацій + переходи секцій по черзі до цільової (як fullpage)
       console.log('[Kulbit-Nav] клік → секція', index);
-      app.goToSection(index, false, dir);
+      app.autoAdvanceTo(index);
     }
   };
 

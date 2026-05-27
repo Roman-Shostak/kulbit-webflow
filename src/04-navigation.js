@@ -37,11 +37,9 @@ console.log('[Kulbit] 04-navigation.js завантажено');
       console.log('[Kulbit-Nav] клік → секція', index, 'крок', stepAttr);
       app.goToSectionStep(index, parseInt(stepAttr, 10));
     } else {
-      // dir обовʼязковий: без нього goToSection іде в гілку «вгору» й сповзає hero (видно фон).
-      //   Завжди ПЛАВНО: goToSection виставляє проміжні секції в стек і плавно наводить ціль (стрибок).
-      const dir = index > app.currentSectionIndex ? 1 : -1;
+      // Швидко «прокручуємо» всі кроки анімацій + переходи секцій по черзі до цільової (як fullpage)
       console.log('[Kulbit-Nav] клік → секція', index);
-      app.goToSection(index, false, dir);
+      app.autoAdvanceTo(index);
     }
   };
 
