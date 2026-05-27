@@ -771,6 +771,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (clamped === prev && !instant) return; // межа — нікуди не йдемо
 
     const target = app.sections[clamped];
+    if (clamped > 0) app.passHero(); // йдемо на НЕ-hero → хедер зникає (hero-таймлайн у кінець)
 
     // Стан кроків/таймлайну нової секції
     if ((target.isOurClients && target.oc) || (target.isProjects && target.pv)) {
@@ -809,7 +810,9 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (app.hideOtherVideos) app.hideOtherVideos();
     };
     if (dir > 0) {
-      // вниз: ціль наповзає знизу поверх поточної
+      // вниз: проміжні секції (між поточною й ціллю) миттєво в стек — плавний СТРИБОК через кілька
+      for (let i = prev + 1; i < clamped; i++) gsap.set(app.sections[i].el, { yPercent: 0 });
+      // ціль наповзає знизу поверх поточної
       if (target.isOurClients && target.oc) target.oc.prepare(); // під час наїзду — приховано (прогрес/заголовки)
       if (target.isProjects && target.pv) target.pv.prepare();   // is-projects: приховано до появи (лінія 0)
       gsap.to(target.el, {
@@ -822,7 +825,9 @@ console.log('[Kulbit] 03-sections.js завантажено');
         }
       });
     } else {
-      // вгору: поточна сповзає вниз, відкриваючи попередню
+      // вгору: проміжні секції (між ціллю й поточною) миттєво під екран — плавний СТРИБОК угору
+      for (let i = clamped + 1; i < prev; i++) gsap.set(app.sections[i].el, { yPercent: 100 });
+      // поточна сповзає вниз, відкриваючи ціль
       if (target.isOurClients && target.oc) target.oc.reset(true); // секцію відкривають на набір 3 (кінець)
       if (target.isProjects && target.pv) target.pv.reset(true);   // is-projects: відкривають на END-картинці
       // Секція, що сповзає геть → її прогрес-лінія плавно згортається разом із нею (фікс бага)
@@ -844,17 +849,20 @@ console.log('[Kulbit] 03-sections.js завантажено');
   app.persistSection = () => {
     try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {}
   };
+  // Привести hero (секція 0) у КІНЕЦЬ його анімації — хедер ховається ШТАТНО (через таймлайн), а не
+  //   зависає (інакше при стрибку/відновленні на не-hero хедер лишався вгорі). Скрол угору на hero
+  //   потім коректно відмотає таймлайн і поверне хедер.
+  app.passHero = () => {
+    const hero = app.sections[0];
+    if (!hero) return;
+    if (hero.isAnimated && hero.timeline) hero.timeline.progress(1).pause();
+    if (hero.isTabletHero && hero.tabletTL) hero.tabletTL.progress(1).pause();
+  };
   app.restoreSection = () => {
     let saved = NaN;
     try { saved = parseInt(sessionStorage.getItem(SECTION_KEY), 10); } catch (e) {}
     if (isNaN(saved) || saved <= 0 || saved >= app.sections.length) return; // 0/немає → лишаємось на hero
-    // Hero (секція 0) приводимо в КІНЕЦЬ його анімації — щоб хедер був схований ШТАТНО (через
-    //   таймлайн), а не зависав вручну (інакше при поверненні вгору на hero хедер не повертався).
-    //   Скрол угору потім коректно відмотає hero й поверне хедер.
-    const hero = app.sections[0];
-    if (hero.isAnimated && hero.timeline) hero.timeline.progress(1).pause();
-    if (hero.isTabletHero && hero.tabletTL) hero.tabletTL.progress(1).pause();
-    app.goToSection(saved, true, 1); // миттєвий перехід на збережену секцію
+    app.goToSection(saved, true, 1); // миттєвий перехід на збережену секцію (passHero — всередині goToSection)
     console.log('[Kulbit-Persist] відновлено секцію', saved);
   };
 

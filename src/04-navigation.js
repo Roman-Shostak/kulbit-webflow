@@ -38,12 +38,10 @@ console.log('[Kulbit] 04-navigation.js завантажено');
       app.goToSectionStep(index, parseInt(stepAttr, 10));
     } else {
       // dir обовʼязковий: без нього goToSection іде в гілку «вгору» й сповзає hero (видно фон).
-      //   Стрибок через кілька секцій — миттєво (коректний стекінг); сусідній — плавно.
-      const cur = app.currentSectionIndex;
-      const dir = index > cur ? 1 : -1;
-      const instant = Math.abs(index - cur) > 1;
-      console.log('[Kulbit-Nav] клік → секція', index, instant ? '(миттєво)' : '(плавно)');
-      app.goToSection(index, instant, dir);
+      //   Завжди ПЛАВНО: goToSection виставляє проміжні секції в стек і плавно наводить ціль (стрибок).
+      const dir = index > app.currentSectionIndex ? 1 : -1;
+      console.log('[Kulbit-Nav] клік → секція', index);
+      app.goToSection(index, false, dir);
     }
   };
 
