@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T09:19:24.063Z */
+/* Kulbit Webflow — зібрано 2026-05-27T09:44:27.828Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -269,7 +269,6 @@ console.log('[Kulbit] 03-sections.js завантажено');
 
   // 03-0 — Чистий стан перед побудовою hero (старт кожного брейкпоінта з hero, крок 0).
   app.resetHeroState = () => {
-    console.log('[Kulbit-HeroReset] currentSectionIndex', app.currentSectionIndex, '-> 0'); // ДІАГНОСТИКА
     app.currentSectionIndex = 0;
     app.currentStep = 0;
     app.isAnimating = false;
@@ -280,6 +279,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
   // 03-0b — Прибирання hero при виході з брейкпоінта. GSAP САМ ревертить таймлайни/сети контексту;
   //         нам лишається скинути наші посилання/прапорці (новий контекст усе перебудує).
   app.teardownHero = () => {
+    if (app._heroVidCleanup) { app._heroVidCleanup(); app._heroVidCleanup = null; } // зняти слухач ресайзу відео
     app.sections.forEach((s) => {
       s.timeline = null; s.isAnimated = false;
       s.tabletTL = null; s.isTabletHero = false;
@@ -344,7 +344,15 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (has(el, 'fade')) s.autoAlpha = 1;
       gsap.set(el, s);
     });
-    gsap.set(heroVideo, { bottom: 'auto', height: heroVideo.clientHeight });
+    // Висота hero-відео (крок 0 = на весь екран) від РЕАЛЬНОГО вьюпорта (як зовнішній hero-vh-fix),
+    //   а не clientHeight: при повороті buildTabletHero спрацьовує ДО того, як hero-vh-fix виставить
+    //   фінальну висоту секції → відео морозилось на проміжній/landscape висоті.
+    const fullVideoH = () => (window.visualViewport && window.visualViewport.height) ||
+                             (app.wrapper ? app.wrapper.clientHeight : window.innerHeight);
+    const syncHeroVideoFull = () => { // оновлюємо ЛИШЕ коли hero повний (крок 0) — не ламаємо 16:9 (крок 2)
+      if (app.currentSectionIndex === 0 && app.currentStep === 0) gsap.set(heroVideo, { height: fullVideoH() });
+    };
+    gsap.set(heroVideo, { bottom: 'auto', height: fullVideoH() });
     gsap.set(section2, { yPercent: 100 });
     if (btn) gsap.set(btn, { y: 0 });
 
@@ -387,6 +395,21 @@ console.log('[Kulbit] 03-sections.js завантажено');
     hero.tabletTL = tl;
     hero.isTabletHero = true;
     app.currentStep = 0;
+
+    // Пересинхронізація висоти відео після повороту/зміни вьюпорта (hero-vh-fix виставляє висоту
+    //   секції асинхронно). Знімаємо попередній слухач (buildTabletHero перебудовується), ставимо новий.
+    if (app._heroVidCleanup) app._heroVidCleanup();
+    let heroVidTimer;
+    const onHeroResize = () => { clearTimeout(heroVidTimer); heroVidTimer = setTimeout(syncHeroVideoFull, 200); };
+    window.addEventListener('resize', onHeroResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onHeroResize);
+    app._heroVidCleanup = () => {
+      clearTimeout(heroVidTimer);
+      window.removeEventListener('resize', onHeroResize);
+      if (window.visualViewport) window.visualViewport.removeEventListener('resize', onHeroResize);
+    };
+    setTimeout(syncHeroVideoFull, 250); // одразу по побудові — упіймати фінальну висоту від hero-vh-fix
+
     console.log('[Kulbit-Tablet] hero готовий: 16:9', video16h, 'partial', Math.round(partial));
   };
 
@@ -980,12 +1003,10 @@ console.log('[Kulbit] 03-sections.js завантажено');
   const SECTION_KEY = 'kulbit-section';
   app.persistSection = () => {
     try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {}
-    console.log('[Kulbit-Persist] збережено секцію', app.currentSectionIndex); // ДІАГНОСТИКА
   };
   app.restoreSection = () => {
     let saved = NaN;
     try { saved = parseInt(sessionStorage.getItem(SECTION_KEY), 10); } catch (e) {}
-    console.log('[Kulbit-Persist] restore: saved =', saved, '| секцій', app.sections.length); // ДІАГНОСТИКА
     if (isNaN(saved) || saved <= 0 || saved >= app.sections.length) return; // 0/немає → лишаємось на hero
     // Hero (секція 0) приводимо в КІНЕЦЬ його анімації — щоб хедер був схований ШТАТНО (через
     //   таймлайн), а не зависав вручну (інакше при поверненні вгору на hero хедер не повертався).
