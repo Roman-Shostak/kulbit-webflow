@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T10:47:01.997Z */
+/* Kulbit Webflow — зібрано 2026-05-27T10:48:39.230Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1220,6 +1220,14 @@ console.log('[Kulbit] 06-responsive.js завантажено');
     //   Перебудову hero при зміні брейкпоінта/орієнтації робить gsap.matchMedia (03-sections.js),
     //   тут лише попап + Observer + прапорець landscapeBlocked (його поважає логіка відео).
     const apply = () => {
+      // Відео у fullscreen (нативний iOS-плеєр / desktop): поворот НЕ має тригерити попап чи паузити
+      //   відео — інакше landscape у fullscreen одразу глушив би перегляд. Стан фіксує 10-project-video.
+      if (app.videoFullscreen) {
+        app.landscapeBlocked = false;
+        popup.style.display = 'none';
+        console.log('[Kulbit-Responsive] відео fullscreen — попап OFF, поворот ігноровано');
+        return;
+      }
       if (mql.matches) {
         // landscape-телефон: попап ON, fullpage OFF, усе відео на паузі
         app.landscapeBlocked = true;
@@ -1237,6 +1245,7 @@ console.log('[Kulbit] 06-responsive.js завантажено');
       }
     };
 
+    app.reapplyResponsive = apply; // 10-project-video кличе після зміни fullscreen-стану відео
     mql.addEventListener('change', apply);
     // Початковий стан — наступним тіком, щоб 08-video.js встиг заповнити app.videos
     setTimeout(apply, 0);
@@ -1884,6 +1893,13 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     });
     player.on('pause', () => setToggleIcon(false));
     player.on('ended', () => setToggleIcon(false));
+    // Стан fullscreen відео (нативний Vimeo iOS / desktop) — щоб 06-responsive не показував попап
+    //   і не паузив відео при повороті телефона у fullscreen.
+    player.on('fullscreenchange', (data) => {
+      const app = window.KulbitApp || {};
+      app.videoFullscreen = !!(data && data.fullscreen);
+      if (app.reapplyResponsive) app.reapplyResponsive();
+    });
     // Іконка звуку — завжди за РЕАЛЬНИМ станом (а не за припущенням): muted → mute-іконка, інакше рівень
     player.on('volumechange', (data) => {
       player.getMuted().then((m) => setVolumeIcon(m ? 0 : (data && data.volume != null ? data.volume : 1)));

@@ -283,6 +283,13 @@ console.log('[Kulbit] 10-project-video.js завантажено');
     });
     player.on('pause', () => setToggleIcon(false));
     player.on('ended', () => setToggleIcon(false));
+    // Стан fullscreen відео (нативний Vimeo iOS / desktop) — щоб 06-responsive не показував попап
+    //   і не паузив відео при повороті телефона у fullscreen.
+    player.on('fullscreenchange', (data) => {
+      const app = window.KulbitApp || {};
+      app.videoFullscreen = !!(data && data.fullscreen);
+      if (app.reapplyResponsive) app.reapplyResponsive();
+    });
     // Іконка звуку — завжди за РЕАЛЬНИМ станом (а не за припущенням): muted → mute-іконка, інакше рівень
     player.on('volumechange', (data) => {
       player.getMuted().then((m) => setVolumeIcon(m ? 0 : (data && data.volume != null ? data.volume : 1)));
