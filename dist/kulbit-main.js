@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T16:56:27.827Z */
+/* Kulbit Webflow — зібрано 2026-05-27T17:02:45.943Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -813,26 +813,37 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const cardW = () => cards[0].getBoundingClientRect().width;
     const shiftFor = (s) => -swapIndexOf(s) * (cardW() + gap()); // зсув групи по x за індексом картки
 
-    // Крок 1 ховає заголовок скрамблом + колапсує його висоту (flex сам підтягує картки вгору):
-    //   desktop/tablet — лише h2; MOBILE — і label, і h2, + колапс їхньої спільної обгортки
-    //   .flex-h-v-v (мало місця на мобілці → звільняємо весь заголовок під картки).
+    // Крок 1 ховає заголовок скрамблом. Desktop/tablet: колапс висоти h2 (flex підтягує картки вгору,
+    //   label лишається). MOBILE: ховаємо ВЕСЬ верх (progressbar + заголовок, autoAlpha) і підіймаємо
+    //   картки рівно до padding-top секції — мало місця, картки мають іти на весь екран.
     const label = section.el.querySelector('.text-size-section-label');
     const h2 = section.el.querySelector('.text-size-section-h2');
     const isMobile = mode === 'mobile';
     const titleWrap = label ? label.closest('.flex-h-v-v') : null;
-    const collapseEl = isMobile ? (titleWrap || h2) : h2;                 // що колапсувати по висоті
     const scrambleEls = (isMobile ? [label, h2] : [h2]).filter(Boolean); // що стирати скрамблом
-    const pxH = (el) => el ? (parseFloat(el.style.height) || el.offsetHeight) : 0; // scramble-фіксована або натуральна
-    let origH = 0;
-    // Натуральну висоту беремо зі scramble-фіксованих inline-висот (вимірюються до стирання тексту);
-    //   на мобілці обгортка flex-h → max(label, h2). Інакше вимір сколапсованого дав би 0.
-    const measureTitle = () => { origH = isMobile ? Math.max(pxH(label), pxH(h2)) : pxH(h2); };
+    let origH2 = 0; // desktop/tablet: натуральна висота h2 (для колапсу/реверсу)
+    const measureTitle = () => { if (!isMobile && h2) origH2 = parseFloat(h2.style.height) || h2.offsetHeight; };
     const setTitle = (collapsed, animate) => {
       scrambleEls.forEach((el) => { const c = app.scrambles && app.scrambles.get(el); if (c) { collapsed ? c.out() : c.in(); } });
-      if (!collapseEl) return;
-      const h = collapsed ? 0 : origH;                  // висота: колапс / повна
-      if (animate) gsap.to(collapseEl, { height: h, duration: STEP, ease: EASE });
-      else gsap.set(collapseEl, { height: h });
+      if (isMobile) {
+        // mobile: ховаємо progressbar + заголовок, картки підіймаємо до padding-top секції (bar — closure нижче)
+        let upH = 0;
+        if (collapsed) {
+          const gr = group.getBoundingClientRect(), sr = section.el.getBoundingClientRect();
+          const padTop = parseFloat(getComputedStyle(section.el).paddingTop) || 0;
+          upH = gr.top - (sr.top + padTop);
+        }
+        const tops = [bar, titleWrap].filter(Boolean);
+        const a = collapsed ? 0 : 1;
+        if (animate) { gsap.to(tops, { autoAlpha: a, duration: STEP, ease: EASE }); gsap.to(group, { y: collapsed ? -upH : 0, duration: STEP, ease: EASE }); }
+        else        { gsap.set(tops, { autoAlpha: a }); gsap.set(group, { y: collapsed ? -upH : 0 }); }
+        return;
+      }
+      // desktop/tablet: колапс висоти h2
+      if (!h2) return;
+      const h = collapsed ? 0 : origH2;
+      if (animate) gsap.to(h2, { height: h, duration: STEP, ease: EASE });
+      else gsap.set(h2, { height: h });
     };
 
     // Прогрес-бар (як pv/oc): трек + дочірня лінія .hs-fill, ширина (state+1)/(maxState+1)
@@ -872,7 +883,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       enter()   { state = 0; measureTitle(); moveX(0, false); setTitle(false, false); showCards(); enterFill(); }, // картки виїжджають; h2 пишеться глобально
       collapse() { collapseFill(); },
       reset(toEnd) { state = toEnd ? maxState : 0; moveX(state, false); setTitle(state >= 1, false); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); }, // origH2 НЕ перевимірюємо тут (h2 може бути сколапсований)
-      dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (collapseEl) collapseEl.style.height = ''; if (fill) fill.remove(); },
+      dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (h2) h2.style.height = ''; gsap.set([bar, titleWrap].filter(Boolean), { clearProps: 'opacity,visibility' }); if (fill) fill.remove(); },
       step(dir) {
         const ns = Math.max(0, Math.min(maxState, state + dir));
         if (ns === state) return false;        // межа → advance викличе goToSection
