@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T16:51:27.612Z */
+/* Kulbit Webflow — зібрано 2026-05-27T16:56:27.827Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -813,27 +813,26 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const cardW = () => cards[0].getBoundingClientRect().width;
     const shiftFor = (s) => -swapIndexOf(s) * (cardW() + gap()); // зсув групи по x за індексом картки
 
-    // h2 (крок 1): стирається скрамблом (через app.scrambles) + його висота колапсує до 0 —
-    //   flex-контейнер сам підтягує картки вгору, геп label↔картки лишається = gap батька.
+    // Крок 1 ховає заголовок скрамблом + колапсує його висоту (flex сам підтягує картки вгору):
+    //   desktop/tablet — лише h2; MOBILE — і label, і h2, + колапс їхньої спільної обгортки
+    //   .flex-h-v-v (мало місця на мобілці → звільняємо весь заголовок під картки).
+    const label = section.el.querySelector('.text-size-section-label');
     const h2 = section.el.querySelector('.text-size-section-h2');
-    const h2ctrl = () => (app.scrambles && h2) ? app.scrambles.get(h2) : null;
-    let origH2 = 0;
-    // Натуральна висота h2: 11-scramble фіксує її в inline-стилі (вимірює до стирання тексту).
-    //   Беремо саме її — інакше при вимірі сколапсованого/стертого h2 виходив би 0 (текст писався б
-    //   у нульову висоту й картки не їхали вниз на реверсі). Fallback — offsetHeight (до scramble).
-    const measureH2 = () => {
-      if (!h2) return;
-      const fixed = parseFloat(h2.style.height);
-      if (fixed > 0) { origH2 = fixed; return; }
-      h2.style.height = ''; origH2 = h2.offsetHeight;
-    };
-    const setH2 = (collapsed, animate) => {
-      if (!h2) return;
-      const c = h2ctrl();
-      if (c) { if (collapsed) c.out(); else c.in(); }   // текст: стерти / написати
-      const h = collapsed ? 0 : origH2;                 // висота: колапс / повна
-      if (animate) gsap.to(h2, { height: h, duration: STEP, ease: EASE });
-      else gsap.set(h2, { height: h });
+    const isMobile = mode === 'mobile';
+    const titleWrap = label ? label.closest('.flex-h-v-v') : null;
+    const collapseEl = isMobile ? (titleWrap || h2) : h2;                 // що колапсувати по висоті
+    const scrambleEls = (isMobile ? [label, h2] : [h2]).filter(Boolean); // що стирати скрамблом
+    const pxH = (el) => el ? (parseFloat(el.style.height) || el.offsetHeight) : 0; // scramble-фіксована або натуральна
+    let origH = 0;
+    // Натуральну висоту беремо зі scramble-фіксованих inline-висот (вимірюються до стирання тексту);
+    //   на мобілці обгортка flex-h → max(label, h2). Інакше вимір сколапсованого дав би 0.
+    const measureTitle = () => { origH = isMobile ? Math.max(pxH(label), pxH(h2)) : pxH(h2); };
+    const setTitle = (collapsed, animate) => {
+      scrambleEls.forEach((el) => { const c = app.scrambles && app.scrambles.get(el); if (c) { collapsed ? c.out() : c.in(); } });
+      if (!collapseEl) return;
+      const h = collapsed ? 0 : origH;                  // висота: колапс / повна
+      if (animate) gsap.to(collapseEl, { height: h, duration: STEP, ease: EASE });
+      else gsap.set(collapseEl, { height: h });
     };
 
     // Прогрес-бар (як pv/oc): трек + дочірня лінія .hs-fill, ширина (state+1)/(maxState+1)
@@ -863,30 +862,30 @@ console.log('[Kulbit] 03-sections.js завантажено');
 
     let state = 0;
     group.style.willChange = 'transform';
-    measureH2();                                          // натуральна висота h2 (для реверсу кроку 1)
-    moveX(0, false); setH2(false, false); hideCards(); prepareFill(); // старт: картка 0, h2 написаний, приховано
+    measureTitle();                                          // натуральна висота h2 (для реверсу кроку 1)
+    moveX(0, false); setTitle(false, false); hideCards(); prepareFill(); // старт: картка 0, h2 написаний, приховано
 
     section.isHSwipe = true;
     section.hswipe = {
       get state() { return state; },
-      prepare() { state = 0; moveX(0, false); setH2(false, false); hideCards(); prepareFill(); }, // наїзд: приховано
-      enter()   { state = 0; measureH2(); moveX(0, false); setH2(false, false); showCards(); enterFill(); }, // картки виїжджають; h2 пишеться глобально
+      prepare() { state = 0; moveX(0, false); setTitle(false, false); hideCards(); prepareFill(); }, // наїзд: приховано
+      enter()   { state = 0; measureTitle(); moveX(0, false); setTitle(false, false); showCards(); enterFill(); }, // картки виїжджають; h2 пишеться глобально
       collapse() { collapseFill(); },
-      reset(toEnd) { state = toEnd ? maxState : 0; moveX(state, false); setH2(state >= 1, false); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); }, // origH2 НЕ перевимірюємо тут (h2 може бути сколапсований)
-      dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (h2) h2.style.height = ''; if (fill) fill.remove(); },
+      reset(toEnd) { state = toEnd ? maxState : 0; moveX(state, false); setTitle(state >= 1, false); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); }, // origH2 НЕ перевимірюємо тут (h2 може бути сколапсований)
+      dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (collapseEl) collapseEl.style.height = ''; if (fill) fill.remove(); },
       step(dir) {
         const ns = Math.max(0, Math.min(maxState, state + dir));
         if (ns === state) return false;        // межа → advance викличе goToSection
         state = ns;
         app.isAnimating = true;
-        setH2(ns >= 1, true);                  // крок 1: h2 стерся + висота 0 (картки flex-вгору); назад: написаний
+        setTitle(ns >= 1, true);                  // крок 1: h2 стерся + висота 0 (картки flex-вгору); назад: написаний
         moveX(ns, true);                       // свап карток (за swapIndex)
         setFill(ns, true);
         gsap.delayedCall(STEP, () => { app.isAnimating = false; });
         return true;
       }
     };
-    console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| h2H', Math.round(origH2), '| зсув', Math.round(cardW() + gap()) + 'px');
+    console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| h2H', Math.round(origH), '| зсув', Math.round(cardW() + gap()) + 'px');
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
