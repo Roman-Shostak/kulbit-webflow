@@ -657,6 +657,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const titleWrap = label ? label.closest('.flex-h-v-v') : null;
     const scrambleEls = (isMobile ? [label, h2] : [h2]).filter(Boolean); // що стирати скрамблом
     let origH2 = 0; // desktop/tablet: натуральна висота h2 (для колапсу/реверсу)
+    let groupMT = 0; // desktop/tablet: значення margin-top:auto групи на state 0 (для реверсу)
     const measureTitle = () => { if (!isMobile && h2) origH2 = parseFloat(h2.style.height) || h2.offsetHeight; };
     const setTitle = (collapsed, animate) => {
       scrambleEls.forEach((el) => { const c = app.scrambles && app.scrambles.get(el); if (c) { collapsed ? c.out() : c.in(); } });
@@ -674,11 +675,19 @@ console.log('[Kulbit] 03-sections.js завантажено');
         else        { gsap.set(tops, { autoAlpha: a }); gsap.set(group, { y: collapsed ? -upH : 0 }); }
         return;
       }
-      // desktop/tablet: колапс висоти h2
+      // desktop/tablet: колапс висоти h2 + прибрати margin-top:auto групи (інакше auto зʼїдає
+      //   звільнене місце й картки не підіймаються). На реверсі повертаємо margin-top, потім — знову auto.
       if (!h2) return;
       const h = collapsed ? 0 : origH2;
-      if (animate) gsap.to(h2, { height: h, duration: STEP, ease: EASE });
-      else gsap.set(h2, { height: h });
+      if (collapsed) groupMT = parseFloat(getComputedStyle(group).marginTop) || 0; // auto-значення на state 0
+      if (animate) {
+        gsap.to(h2, { height: h, duration: STEP, ease: EASE });
+        if (collapsed) gsap.to(group, { marginTop: 0, duration: STEP, ease: EASE });
+        else gsap.to(group, { marginTop: groupMT, duration: STEP, ease: EASE, onComplete: () => gsap.set(group, { marginTop: '' }) });
+      } else {
+        gsap.set(h2, { height: h });
+        gsap.set(group, { marginTop: collapsed ? 0 : '' });
+      }
     };
 
     // Прогрес-бар (як pv/oc): трек + дочірня лінія .hs-fill, ширина (state+1)/(maxState+1)
