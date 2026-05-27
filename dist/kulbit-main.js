@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T16:14:27.615Z */
+/* Kulbit Webflow — зібрано 2026-05-27T16:27:29.378Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -243,6 +243,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildDesktopAnimations();
       app.buildOurClients('desktop');                    // is-our-clients (ADR-013)
       app.buildProjects('desktop');                      // is-projects: свап відео (ADR-015, поки лише desktop)
+      app.buildHSwipe('desktop');                        // is-our-services: горизонтальний свап карток
       app.restoreSection();                              // персистентність: відновити позицію (reload/перебудова)
       return () => app.teardownHero();
     });
@@ -251,6 +252,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildTabletHero();
       app.buildOurClients('tablet');                     // is-our-clients (ADR-013, таблет)
       app.buildProjects('tablet');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
+      app.buildHSwipe('tablet');                         // is-our-services: горизонтальний свап карток
       app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
     });
@@ -259,6 +261,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildTabletHero();
       app.buildOurClients('mobile');                     // is-our-clients (ADR-013, мобілка: shiftN [2,1,2])
       app.buildProjects('mobile');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
+      app.buildHSwipe('mobile');                         // is-our-services: горизонтальний свап карток
       app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
     });
@@ -287,6 +290,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
       s.oc = null; s.isOurClients = false;
       if (s.pv && s.pv.dispose) s.pv.dispose(); // прибрати свап-стан is-projects (ADR-015)
       s.pv = null; s.isProjects = false;
+      if (s.hswipe && s.hswipe.dispose) s.hswipe.dispose(); // прибрати свап-стан is-our-services
+      s.hswipe = null; s.isHSwipe = false;
     });
     console.log('[Kulbit-Anim] teardown hero (зміна брейкпоінта)');
   };
@@ -786,6 +791,76 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-PV]', mode, 'готовий | елементів:', total, '| WIN', WIN, '| maxState', maxState, '| гэп', Math.round(gap()) + 'px');
   };
 
+  // 03d — Спец-секція is-our-services: ГОРИЗОНТАЛЬНИЙ свап карток ([data-kulbit-hswipe-group]).
+  //   Заголовки скрамбляться глобально (11-scramble.js). Поява: група виїжджає знизу + opacity.
+  //   Свап: 1 свайп = група зсувається по x на (ширина картки + columnGap), показуючи наступну.
+  //   [Крок 1 «h2 стирається + картки вгору» — наступний під-крок B.2.]
+  app.buildHSwipe = (mode) => {
+    const section = app.sections.find((s) => s.el.classList.contains('is-our-services'));
+    if (!section) return;
+    const group = section.el.querySelector('[data-kulbit-hswipe-group]');
+    if (!group) return;
+    const cards = [...group.children];
+    const total = cards.length;
+    if (total < 2) { console.warn('[Kulbit-HS] замало карток'); return; }
+
+    const STEP = app.config.scrollDuration, EASE = app.config.ease;
+    const RISE = 60; // px — група виїжджає знизу на появі
+    const maxState = total - 1; // WIN=1: одна картка на екран
+    const gap = () => parseFloat(getComputedStyle(group).columnGap) || 0;
+    const cardW = () => cards[0].getBoundingClientRect().width;
+    const shiftFor = (s) => -s * (cardW() + gap()); // зсув групи по x
+
+    // Прогрес-бар (як pv/oc): трек + дочірня лінія .hs-fill, ширина (state+1)/(maxState+1)
+    const bar = section.el.querySelector('.section-progresbar');
+    let fill = null;
+    if (bar) {
+      bar.style.position = 'relative';
+      bar.style.backgroundColor = 'rgba(253, 252, 252, 0.15)';
+      fill = bar.querySelector('.hs-fill');
+      if (!fill) { fill = document.createElement('div'); fill.className = 'hs-fill'; bar.appendChild(fill); }
+      Object.assign(fill.style, { position: 'absolute', left: '0', top: '0', height: '100%', backgroundColor: '#fdfcfc' });
+    }
+    const setFill = (s, animate) => {
+      if (!fill) return;
+      const w = ((s + 1) / (maxState + 1) * 100) + '%';
+      if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
+      else gsap.set(fill, { width: w });
+    };
+    const prepareFill  = () => { if (fill) { gsap.killTweensOf(fill); gsap.set(fill, { width: '0%' }); } };
+    const enterFill    = () => { prepareFill(); setFill(0, true); };
+    const collapseFill = () => { if (fill) { gsap.killTweensOf(fill); gsap.to(fill, { width: '0%', duration: STEP, ease: EASE }); } };
+
+    const applyState = (s) => gsap.set(group, { x: shiftFor(s) });
+    const showCards   = () => gsap.fromTo(group, { y: RISE, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: STEP, ease: EASE });
+    const hideCards   = () => gsap.set(group, { autoAlpha: 0, y: RISE });
+
+    let state = 0;
+    group.style.willChange = 'transform';
+    applyState(0); hideCards(); prepareFill(); // старт: картка 0, приховано, лінія 0
+
+    section.isHSwipe = true;
+    section.hswipe = {
+      get state() { return state; },
+      prepare() { state = 0; applyState(0); hideCards(); prepareFill(); }, // наїзд: приховано
+      enter()   { state = 0; applyState(0); showCards(); enterFill(); },   // повне накриття: картки виїжджають знизу
+      collapse() { collapseFill(); },
+      reset(toEnd) { state = toEnd ? maxState : 0; applyState(state); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); },
+      dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (fill) fill.remove(); },
+      step(dir) {
+        const ns = Math.max(0, Math.min(maxState, state + dir));
+        if (ns === state) return false;        // межа → advance викличе goToSection
+        state = ns;
+        app.isAnimating = true;
+        gsap.to(group, { x: shiftFor(ns), duration: STEP, ease: EASE }); // горизонтальний зсув
+        setFill(ns, true);
+        gsap.delayedCall(STEP, () => { app.isAnimating = false; });
+        return true;
+      }
+    };
+    console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| зсув', Math.round(cardW() + gap()) + 'px');
+  };
+
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
   //      Початковий стан (крок 0) виставляється gsap.set; крок 1 — це кінець таймлайну.
   //      Фази задаються data-kulbit-order (0 — перша, далі — послідовно). Без order — усе разом.
@@ -899,8 +974,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (clamped > 0) app.passHero(); // йдемо на НЕ-hero → хедер зникає (hero-таймлайн у кінець)
 
     // Стан кроків/таймлайну нової секції
-    if ((target.isOurClients && target.oc) || (target.isProjects && target.pv)) {
-      app.currentStep = 0; // власний стан — у target.oc / target.pv (виставляємо в instant/animated нижче)
+    if ((target.isOurClients && target.oc) || (target.isProjects && target.pv) || (target.isHSwipe && target.hswipe)) {
+      app.currentStep = 0; // власний стан — у target.oc / target.pv / target.hswipe (instant/animated нижче)
     } else if (target.isAnimated && target.timeline) {
       const atEnd = dir < 0;                       // вхід знизу → таймлайн у кінці
       target.timeline.progress(atEnd ? 1 : 0).pause();
@@ -919,6 +994,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.applyStackingPositions();
       if (target.isOurClients && target.oc) target.oc.reset(dir < 0); // миттєвий стан секції
       if (target.isProjects && target.pv) target.pv.reset(dir < 0);   // миттєвий стан свапу відео
+      if (target.isHSwipe && target.hswipe) target.hswipe.reset(dir < 0); // миттєвий стан горизонт. свапу
       if (app.updateVideoVisibility) app.updateVideoVisibility();
       return;
     }
@@ -940,6 +1016,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       // ціль наповзає знизу поверх поточної
       if (target.isOurClients && target.oc) target.oc.prepare(); // під час наїзду — приховано (прогрес/заголовки)
       if (target.isProjects && target.pv) target.pv.prepare();   // is-projects: приховано до появи (лінія 0)
+      if (target.isHSwipe && target.hswipe) target.hswipe.prepare(); // is-our-services: картки приховано
       gsap.to(target.el, {
         yPercent: 0,
         duration: app.config.scrollDuration, ease: app.config.ease,
@@ -947,6 +1024,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
           finish();
           if (target.isOurClients && target.oc) target.oc.enter(); // на повному накритті — поява
           if (target.isProjects && target.pv) target.pv.enter();
+          if (target.isHSwipe && target.hswipe) target.hswipe.enter(); // is-our-services: картки виїжджають
         }
       });
     } else {
@@ -955,10 +1033,12 @@ console.log('[Kulbit] 03-sections.js завантажено');
       // поточна сповзає вниз, відкриваючи ціль
       if (target.isOurClients && target.oc) target.oc.reset(true); // секцію відкривають на набір 3 (кінець)
       if (target.isProjects && target.pv) target.pv.reset(true);   // is-projects: відкривають на END-картинці
+      if (target.isHSwipe && target.hswipe) target.hswipe.reset(true); // is-our-services: відкривають на останній картці
       // Секція, що сповзає геть → її прогрес-лінія плавно згортається разом із нею (фікс бага)
       const leaving = app.sections[prev];
       if (leaving.isOurClients && leaving.oc && leaving.oc.collapse) leaving.oc.collapse();
       if (leaving.isProjects && leaving.pv && leaving.pv.collapse) leaving.pv.collapse();
+      if (leaving.isHSwipe && leaving.hswipe && leaving.hswipe.collapse) leaving.hswipe.collapse();
       gsap.to(leaving.el, {
         yPercent: 100,
         duration: app.config.scrollDuration, ease: app.config.ease,
@@ -1010,6 +1090,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     // is-projects (ADR-015, десктоп): свап відео всередині секції
     if (section.isProjects && section.pv) {
       if (section.pv.step(dir)) return;                       // свап усередині оброблено
+      app.goToSection(app.currentSectionIndex + dir, false, dir); // межа → сусідня секція
+      return;
+    }
+
+    // is-our-services: горизонтальний свап карток усередині секції
+    if (section.isHSwipe && section.hswipe) {
+      if (section.hswipe.step(dir)) return;                   // свап усередині оброблено
       app.goToSection(app.currentSectionIndex + dir, false, dir); // межа → сусідня секція
       return;
     }
