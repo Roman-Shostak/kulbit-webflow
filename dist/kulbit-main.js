@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T17:02:45.943Z */
+/* Kulbit Webflow — зібрано 2026-05-27T17:04:33.089Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -896,7 +896,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         return true;
       }
     };
-    console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| h2H', Math.round(origH), '| зсув', Math.round(cardW() + gap()) + 'px');
+    console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| h2H', Math.round(origH2), '| зсув', Math.round(cardW() + gap()) + 'px');
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
