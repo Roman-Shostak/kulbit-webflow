@@ -391,6 +391,11 @@ console.log('[Kulbit] 03-sections.js завантажено');
     //   знову зʼявився → знову IN. IO не реагує на просте накриття сусідньою секцією (лише на
     //   реальний вихід із вьюпорта). Висота заголовка зафіксована + overflow:hidden (стабільність).
     const makeHeadCtrl = (e) => {
+      // Оригінальний HTML заголовка зберігаємо ОДИН раз; при перебудові (поворот/зміна брейкпоінта)
+      //   відновлюємо перед парсингом — інакше parseSegments читав би вже спорожнений scramble/setOut
+      //   DOM (заголовок зникав, scramble не працював, висота кривилась).
+      if (e.dataset.ocOrig == null) e.dataset.ocOrig = e.innerHTML;
+      else e.innerHTML = e.dataset.ocOrig;
       e.style.height = ''; e.style.overflow = '';                // скинути перед виміром (перебудова брейкпоінта)
       const targets = buildSegDOM(e, parseSegments(e), true);    // сегментовані спани з текстом (кольори збережено)
       e.style.height = e.offsetHeight + 'px';                    // фіксуємо повну висоту (стабільно при скрамблі)
