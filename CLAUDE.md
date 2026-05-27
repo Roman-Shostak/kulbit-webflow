@@ -195,8 +195,11 @@ window.KulbitApp = {
   tabletHeroStep(dir) { ... },// таблет: крокування hero (0↔3) + межа hero↔секція1; true якщо оброблено
   setupObserver() { ... },    // Observer + логіка жесту (анти-інерція) → кличе advance()
   advance(dir) { ... },       // делегує tabletHeroStep; інакше: reveal-крок / desktop-таймлайн / зміна секції
-  goToSection(index, instant, dir) { ... }, // СТЕКІНГ: ціль наповзає знизу / поточна сповзає; + updateVideoVisibility()
+  autoAdvanceTo(index) { ... }, // кнопки (ADR-003): chain advance(dir) до цільової + timeScale(3) — швидке прокручування всіх кроків/переходів (fullpage), Observer OFF
+  goToSection(index, instant, dir) { ... }, // СТЕКІНГ: ціль наповзає / поточна сповзає; проміжні в стек (стрибок); passHero якщо не-hero; + updateVideoVisibility()
   goToSectionStep(index, step) { ... },     // кнопки: секція + конкретний крок (стекінг-позиції)
+  passHero() { ... },         // привести hero-таймлайн у кінець → header зникає штатно (стрибок/відновлення на не-hero)
+  persistSection() / restoreSection() { ... }, // позиція секції у sessionStorage (reload/поворот не скидають на hero)
   resetSteps(section, shown) { ... },        // усі reveal-кроки секції сховати/показати
   playStep(section, i) / reverseStep(section, i) { ... }, // показати/сховати reveal-крок i
   handleResize() { ... },     // перевиставляє стекінг-позиції (100vh/yPercent самі адаптуються)
@@ -403,7 +406,7 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
 ```
 
-Підставляєш короткий хеш свіжого коміту (напр. `@feb0427`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `feb0427`** — для commit-pinned тесту коду підставляй саме `@feb0427`. **is-projects на mobile завершено повністю** (свап + контролі + «грає одне відео» + поворот у fullscreen не паузить). _Стабільна база: hero + is-our-clients (усі девайси) + is-projects свап (desktop + tablet/mobile) + контролі відео на tablet/mobile (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + персистентність позиції (sessionStorage) + **поворот девайса не ламає** (позиція тримається, hero-відео на всю висоту, scramble заголовка is-our-clients). Усе підтверджено Romanom (desktop + iPhone). Лишилось (необов'язкове): auto-landscape fullscreen на iOS (впирається в платформу), «одне відео». Історія re-approach — git `50fb693`..`1500d68`._
+Підставляєш короткий хеш свіжого коміту (напр. `@b92db74`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `b92db74`** — для commit-pinned тесту коду підставляй саме `@b92db74`. **is-projects на mobile завершено повністю** (свап + контролі + «грає одне відео» + поворот у fullscreen) + **кнопки-навігація = автопрогравання** (швидке прокручування кроків+переходів до цілі, header зникає). _Стабільна база: hero + is-our-clients (усі девайси) + is-projects свап (desktop + tablet/mobile) + контролі відео на tablet/mobile (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + персистентність позиції (sessionStorage) + **поворот девайса не ламає** (позиція тримається, hero-відео на всю висоту, scramble заголовка is-our-clients). Усе підтверджено Romanom (desktop + iPhone). Лишилось (необов'язкове): auto-landscape fullscreen на iOS (впирається в платформу), «одне відео». Історія re-approach — git `50fb693`..`1500d68`._
 
 > ⚠️ **Урок (регресія скролу 26.05.2026 — для майбутнього re-approach):** у `buildProjects` `section` = запис `app.sections` `{el, index, …}`, а НЕ DOM-елемент. `getComputedStyle(section)` кинув помилку → `registerAnimations` (matchMedia) впав ДО `setupObserver` → зник скрол на всьому сайті. Уроки: (1) у `buildProjects`/`build*` для DOM-операцій брати `section.el`, не `section`; (2) варто залишити захист — `init` обгортає `registerAnimations` у try/catch, щоб помилка білду не вбивала Observer (було в `c7b8470`, відкочено разом з рештою — повернути при re-approach).
 
@@ -434,7 +437,7 @@ chore: оновив build.js
 
 - **ADR-001** — Відмова від fullpage.js: snap будуємо на GSAP Observer (гнучкість для >3 покрокових секцій, без ліцензій).
 - **ADR-002** — ⚠️ СКАСОВАНО (див. ADR-008): ScrollSmoother замість Lenis — відкинуто, конфліктував зі snap.
-- **ADR-003** — Гібридні кнопки-переходи: секція + крок з авто-програванням таймлайну (`04-navigation.js`, `data-target-section`/`-step`).
+- **ADR-003** — Гібридні кнопки-переходи (`04-navigation.js`, `data-target-section` число/імʼя + `data-target-step`). **Реалізація = АВТОПРОГРАВАННЯ** (`autoAdvanceTo`): клік → послідовний `advance(dir)` до цільової секції з `gsap.globalTimeline.timeScale(3)` (швидко прокручує ВСІ кроки анімацій + накладання секцій по черзі, як fullpage; не стрибок). `passHero` ховає header при переході на не-hero. ✅
 - **ADR-004** — Mobile landscape → попап «поверни пристрій» (`06-responsive.js`); детект по орієнтації + `max-height ≤ 500` + `pointer: coarse`; розмітка `[data-kulbit-landscape-popup]`.
 - **ADR-005** — Зберігання коду: GitHub-репо + jsDelivr CDN (push → purge / commit-pinned URL).
 - **ADR-006** — Модульна `src/*` з префіксами `01-`..`10-` + Node `build.js` конкатенація в один dist-файл.
@@ -480,18 +483,19 @@ chore: оновив build.js
 - [x] **«Грає лише одне відео»** — ✅ старт нового project-відео моментально скидає решту на постер (ADR-016 п.6, `bd12646`)
 - [x] **Поворот у fullscreen не паузить відео** — ✅ `videoFullscreen` guard у `06-responsive`/`08-video` (`867030e`+`feb0427`)
 - [~] **C (необов'язкове):** auto-landscape при fullscreen — iOS не дає `orientation.lock` (нативний Vimeo-fullscreen сам пропонує поворот). Roman не наполягає.
+- [x] **Кнопки-навігація = автопрогравання** — ✅ клік швидко прокручує всі кроки+переходи до цілі (як fullpage), header зникає (`autoAdvanceTo`/`passHero`, ADR-003, `b92db74`)
 - [ ] **Крок 9:** попап-форма (`07-popup-form.js`)
 - [ ] **Крок 10:** фінальний поліш; **Крок 11:** клієнтське демо; **Крок 12:** продакшн-домен
 
-### 🔖 Точка відновлення (26.05.2026 — стабільна база)
+### 🔖 Точка відновлення (27.05.2026 — стабільна база)
 
-**Поточний стабільний стан = `feb0427`** (is-projects на mobile завершено: + «грає лише одне відео», + поворот у fullscreen не паузить відео). Hero + is-our-clients (всі девайси) + is-projects (DESKTOP плеєр+свап+прогрес + **tablet/mobile свап вікном 3**) + скрол над відео + **контролі відео на tablet/mobile** (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + **персистентність позиції** (sessionStorage) + **стійкість до повороту девайса** (позиція тримається, hero-відео на всю висоту, scramble заголовка is-our-clients відновлюється) — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~98 KB.
+**Поточний стабільний стан = `b92db74`.** Hero + is-our-clients (всі девайси) + is-projects (DESKTOP плеєр+свап+прогрес + **tablet/mobile свап вікном 3** + контролі для iOS + «грає одне відео» + поворот у fullscreen не паузить) + **персистентність позиції** (sessionStorage) + **стійкість до повороту девайса** (позиція, hero-відео на всю висоту, scramble заголовка) + **кнопки-навігація = автопрогравання** (`autoAdvanceTo`, як fullpage, header зникає) — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~99 KB.
 
-**Як сюди дійшли:** початковий батч ADR-016 (свап+персистентність+landscape разом) внесли багато проблем + регресію скролу → відкат до `f0928a9` (`3978c4d`). Потім **по одній фічі з тестом**: повернули лише свап вікном 3 (`a34408b` + фікс slotH `86b1c33`). **Урок (memory [[incremental-not-batched]]):** фічі по ОДНІЙ. Ще урок (memory [[mobile-zoom-before-css-debug]]): мобільний візуальний зсув на одному девайсі — спершу перевір `visualViewport.scale` (застряглий zoom), потім CSS.
+**Як сюди дійшли (сесія 26-27.05.2026):** після відкату ADR-016 (`3978c4d`) повернули фічі **по одній з тестом**: свап вікном 3 → контролі відео iOS → персистентність → стійкість до повороту → «грає одне відео» → автопрогравання кнопок. Жодного батчу. **Уроки:** [[incremental-not-batched]] (по одній), [[mobile-zoom-before-css-debug]] (zoom перед CSS), [[ios-vimeo-unmute]] (розмут лише граючого відео в gesture; fullscreen на div не працює — тільки Vimeo SDK).
 
-**Стан верстки:** 9 зупинок розмічені; hero + is-our-clients + is-projects готові. Решта секцій + footer — Roman верстає. Атрибути hero та Vimeo-embed — у `docs/hero-reference.md`. ⚠️ дефект верстки на майбутнє: `.hero-video-mask`/`.hero-video-wrapper` мають `overflow:visible` — варто `hidden` (cover-iframe інакше може розпирати документ на iOS).
+**Стан верстки:** 9 зупинок розмічені; hero + is-our-clients + is-projects готові. **Решта секцій + footer — Roman верстає (наступний крок — Крок 6: анімувати їх через ADR-009 атрибути або reveal-кроки `[data-kulbit-step]`).** Атрибути hero та Vimeo-embed — у `docs/hero-reference.md`. ⚠️ дефект верстки на майбутнє: `.hero-video-mask`/`.hero-video-wrapper` мають `overflow:visible` — варто `hidden` (cover-iframe інакше може розпирати документ на iOS).
 
-**Далі (поворот+fullscreen UX):** B — у fullscreen поворот паузить відео (наша pause-by-visibility реагує на orientationchange); C — авто-landscape при fullscreen (`orientation.lock`); D — поворот+вихід із fullscreen скидає на hero з кривими анімаціями. Потім «грає одне відео». Експериментальний код re-approach — git `50fb693`..`1500d68`.
+**Далі:** Крок 6 — анімації решти секцій (чекає верстки Romana). Необов'язкове: auto-landscape fullscreen на iOS (впирається в платформу). Потім Крок 9 (попап-форма). Експериментальний код re-approach — git `50fb693`..`1500d68`.
 
 **Урок про iOS+Vimeo звук (memory [[ios-vimeo-unmute]]):** розмутити Vimeo на iOS можна лише на відео, що ВЖЕ грає, синхронно в gesture (як hero `background=1`). Відео, що стартує з кліку, в тому ж кліку розмутити не можна — звук лише окремою кнопкою.
 
