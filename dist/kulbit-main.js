@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T17:04:33.089Z */
+/* Kulbit Webflow — зібрано 2026-05-27T17:12:27.092Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -887,9 +887,12 @@ console.log('[Kulbit] 03-sections.js завантажено');
       step(dir) {
         const ns = Math.max(0, Math.min(maxState, state + dir));
         if (ns === state) return false;        // межа → advance викличе goToSection
-        state = ns;
+        const prev = state; state = ns;
         app.isAnimating = true;
-        setTitle(ns >= 1, true);                  // крок 1: h2 стерся + висота 0 (картки flex-вгору); назад: написаний
+        // заголовок ховаємо/показуємо ТІЛЬКИ на межі 0↔1 (не на кожному свапі — інакше mobile
+        //   перевимірював би upH від уже піднятої групи й картки стрибали б)
+        if (prev === 0 && ns >= 1) setTitle(true, true);        // крок 1: заголовок зникає, картки вгору
+        else if (prev >= 1 && ns === 0) setTitle(false, true);  // назад: заголовок пишеться, картки вниз
         moveX(ns, true);                       // свап карток (за swapIndex)
         setFill(ns, true);
         gsap.delayedCall(STEP, () => { app.isAnimating = false; });
