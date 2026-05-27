@@ -104,6 +104,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
 
   // 03-0 — Чистий стан перед побудовою hero (старт кожного брейкпоінта з hero, крок 0).
   app.resetHeroState = () => {
+    console.log('[Kulbit-HeroReset] currentSectionIndex', app.currentSectionIndex, '-> 0'); // ДІАГНОСТИКА
     app.currentSectionIndex = 0;
     app.currentStep = 0;
     app.isAnimating = false;
@@ -814,10 +815,12 @@ console.log('[Kulbit] 03-sections.js завантажено');
   const SECTION_KEY = 'kulbit-section';
   app.persistSection = () => {
     try { sessionStorage.setItem(SECTION_KEY, String(app.currentSectionIndex)); } catch (e) {}
+    console.log('[Kulbit-Persist] збережено секцію', app.currentSectionIndex); // ДІАГНОСТИКА
   };
   app.restoreSection = () => {
     let saved = NaN;
     try { saved = parseInt(sessionStorage.getItem(SECTION_KEY), 10); } catch (e) {}
+    console.log('[Kulbit-Persist] restore: saved =', saved, '| секцій', app.sections.length); // ДІАГНОСТИКА
     if (isNaN(saved) || saved <= 0 || saved >= app.sections.length) return; // 0/немає → лишаємось на hero
     // Hero (секція 0) приводимо в КІНЕЦЬ його анімації — щоб хедер був схований ШТАТНО (через
     //   таймлайн), а не зависав вручну (інакше при поверненні вгору на hero хедер не повертався).
