@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T16:45:32.053Z */
+/* Kulbit Webflow — зібрано 2026-05-27T16:51:27.612Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -818,7 +818,15 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const h2 = section.el.querySelector('.text-size-section-h2');
     const h2ctrl = () => (app.scrambles && h2) ? app.scrambles.get(h2) : null;
     let origH2 = 0;
-    const measureH2 = () => { if (h2) { h2.style.height = ''; origH2 = h2.offsetHeight; } }; // натуральна висота
+    // Натуральна висота h2: 11-scramble фіксує її в inline-стилі (вимірює до стирання тексту).
+    //   Беремо саме її — інакше при вимірі сколапсованого/стертого h2 виходив би 0 (текст писався б
+    //   у нульову висоту й картки не їхали вниз на реверсі). Fallback — offsetHeight (до scramble).
+    const measureH2 = () => {
+      if (!h2) return;
+      const fixed = parseFloat(h2.style.height);
+      if (fixed > 0) { origH2 = fixed; return; }
+      h2.style.height = ''; origH2 = h2.offsetHeight;
+    };
     const setH2 = (collapsed, animate) => {
       if (!h2) return;
       const c = h2ctrl();
@@ -864,7 +872,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       prepare() { state = 0; moveX(0, false); setH2(false, false); hideCards(); prepareFill(); }, // наїзд: приховано
       enter()   { state = 0; measureH2(); moveX(0, false); setH2(false, false); showCards(); enterFill(); }, // картки виїжджають; h2 пишеться глобально
       collapse() { collapseFill(); },
-      reset(toEnd) { state = toEnd ? maxState : 0; measureH2(); moveX(state, false); setH2(state >= 1, false); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); },
+      reset(toEnd) { state = toEnd ? maxState : 0; moveX(state, false); setH2(state >= 1, false); gsap.set(group, { autoAlpha: 1, y: 0 }); setFill(state, false); }, // origH2 НЕ перевимірюємо тут (h2 може бути сколапсований)
       dispose() { gsap.set(group, { clearProps: 'transform,opacity,visibility,willChange' }); if (h2) h2.style.height = ''; if (fill) fill.remove(); },
       step(dir) {
         const ns = Math.max(0, Math.min(maxState, state + dir));
