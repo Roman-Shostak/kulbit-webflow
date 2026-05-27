@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T10:54:18.548Z */
+/* Kulbit Webflow — зібрано 2026-05-27T11:07:10.652Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -1163,8 +1163,13 @@ console.log('[Kulbit] 04-navigation.js завантажено');
       console.log('[Kulbit-Nav] клік → секція', index, 'крок', stepAttr);
       app.goToSectionStep(index, parseInt(stepAttr, 10));
     } else {
-      console.log('[Kulbit-Nav] клік → секція', index);
-      app.goToSection(index);
+      // dir обовʼязковий: без нього goToSection іде в гілку «вгору» й сповзає hero (видно фон).
+      //   Стрибок через кілька секцій — миттєво (коректний стекінг); сусідній — плавно.
+      const cur = app.currentSectionIndex;
+      const dir = index > cur ? 1 : -1;
+      const instant = Math.abs(index - cur) > 1;
+      console.log('[Kulbit-Nav] клік → секція', index, instant ? '(миттєво)' : '(плавно)');
+      app.goToSection(index, instant, dir);
     }
   };
 
