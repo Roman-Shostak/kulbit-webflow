@@ -76,23 +76,23 @@ console.log('[Kulbit] 11-scramble.js завантажено');
     };
   };
 
-  // Налаштування: збираємо позначені елементи (крім is-our-clients), IO керує появою/виходом
-  const setupScramble = () => {
+  // Збірка/перезбірка: усі [data-kulbit-scramble], IO керує появою/виходом. Re-runnable на resize —
+  //   бо висота заголовка залежить від брейкпоінта (makeScramble відновлює оригінал і переміряє).
+  let io = null, resizeTimer = null;
+  const build = () => {
     const app = window.KulbitApp = window.KulbitApp || {};
     app.scrambles = app.scrambles || new Map();
-    const els = [...document.querySelectorAll('[data-kulbit-scramble]')]
-      .filter((el) => !el.closest('.is-our-clients'));    // is-our-clients має власну scramble-логіку
-    if (!els.length) {
-      console.log('[Kulbit-Scramble] елементів [data-kulbit-scramble] немає (поза is-our-clients)');
-      return;
-    }
+    if (io) io.disconnect();
+    app.scrambles.clear();
+    const els = [...document.querySelectorAll('[data-kulbit-scramble]')];
+    if (!els.length) { console.log('[Kulbit-Scramble] елементів [data-kulbit-scramble] немає'); return; }
     els.forEach((el) => {
       const ctrl = makeScramble(el);
       ctrl.setOut();                        // старт порожньо — зʼявляться скрамблом при вході у вьюпорт
       app.scrambles.set(el, ctrl);
     });
     // Поява у вьюпорті (наповзання секції) → IN; повний вихід → стираємо (готуємо до повторної появи)
-    const io = new IntersectionObserver((entries) => {
+    io = new IntersectionObserver((entries) => {
       entries.forEach((en) => {
         const ctrl = app.scrambles.get(en.target);
         if (!ctrl) return;
@@ -101,8 +101,9 @@ console.log('[Kulbit] 11-scramble.js завантажено');
       });
     }, { threshold: [0, 0.6] });
     els.forEach((el) => io.observe(el));
-    console.log('[Kulbit-Scramble] активний на', els.length, 'елемент(ах) (поза is-our-clients)');
+    console.log('[Kulbit-Scramble] активний на', els.length, 'елемент(ах)');
   };
 
-  document.addEventListener('DOMContentLoaded', setupScramble);
+  document.addEventListener('DOMContentLoaded', build);
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(build, 200); });
 })();

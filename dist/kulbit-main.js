@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T16:09:39.856Z */
+/* Kulbit Webflow — зібрано 2026-05-27T16:14:27.615Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -548,49 +548,9 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (animate) gsap.to(fill, { width: w, duration: STEP, ease: EASE });
       else gsap.set(fill, { width: w });
     };
-    // Заголовки (H2/label): під час наїзду секції приховані (autoAlpha 0); скрамбл-поява —
-    // лише на повному накритті (коли секція торкнулась верху екрана). Прогрес — так само.
-    const heads = [h2, label].filter(Boolean);
-    // Скрамбл заголовків КЕРУЄТЬСЯ ВИДИМІСТЮ У ВЬЮПОРТІ (незалежно від кроків OC):
-    //   зʼявився у вьюпорті → скрамбл-IN (порожньо→текст); зник → скрамбл-OUT (текст→порожньо);
-    //   знову зʼявився → знову IN. IO не реагує на просте накриття сусідньою секцією (лише на
-    //   реальний вихід із вьюпорта). Висота заголовка зафіксована + overflow:hidden (стабільність).
-    const makeHeadCtrl = (e) => {
-      // Оригінальний HTML заголовка зберігаємо ОДИН раз; при перебудові (поворот/зміна брейкпоінта)
-      //   відновлюємо перед парсингом — інакше parseSegments читав би вже спорожнений scramble/setOut
-      //   DOM (заголовок зникав, scramble не працював, висота кривилась).
-      if (e.dataset.ocOrig == null) e.dataset.ocOrig = e.innerHTML;
-      else e.innerHTML = e.dataset.ocOrig;
-      e.style.height = ''; e.style.overflow = '';                // скинути перед виміром (перебудова брейкпоінта)
-      const targets = buildSegDOM(e, parseSegments(e), true);    // сегментовані спани з текстом (кольори збережено)
-      e.style.height = e.offsetHeight + 'px';                    // фіксуємо повну висоту (стабільно при скрамблі)
-      e.style.overflow = 'hidden';
-      let shown = true, tl = null;
-      const animateTo = (show) => {
-        if (tl) tl.kill();
-        tl = gsap.timeline();
-        targets.forEach(([s, t]) => tl.to(s, { duration: 1.2, scrambleText: { text: show ? t : '', ...SC() } }, 0));
-        shown = show;
-      };
-      return {
-        el: e,
-        show() { if (!shown) animateTo(true); },
-        hide() { if (shown) animateTo(false); },
-        setOut() { if (tl) tl.kill(); targets.forEach(([s]) => { s.textContent = ''; }); shown = false; }
-      };
-    };
-    const headCtrls = heads.map(makeHeadCtrl);
-    headCtrls.forEach((c) => c.setOut()); // старт: порожньо (зʼявляться скрамблом при вході у вьюпорт)
-    const headIO = new IntersectionObserver((entries) => {
-      entries.forEach((en) => {
-        const c = headCtrls.find((x) => x.el === en.target);
-        if (!c) return;
-        if (en.intersectionRatio >= 0.6) c.show();   // зʼявився достатньо → IN
-        else if (!en.isIntersecting) c.hide();        // повністю вийшов → OUT
-      });
-    }, { threshold: [0, 0.6] });
-    headCtrls.forEach((c) => headIO.observe(c.el));
-    const disarmHeads = () => headIO.disconnect();
+    // Заголовки (h2/label) скрамбляться ГЛОБАЛЬНО через 11-scramble.js за атрибутом
+    //   [data-kulbit-scramble] (поява/вихід за видимістю у вьюпорті). Тут — лише картки,
+    //   тексти карток (morphTexts/TXT) та прогрес-лінія.
 
     // Прогрес (заголовки керуються IO незалежно)
     // Прогрес-лінія: МИТТЄВО в 0 при підготовці (без видимого зворотного руху під час появи —
@@ -641,7 +601,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         reset(toEnd) { stage = toEnd ? MAXST : 0; applyStage(stage, false); setTexts(stage >= scrIdx); showCommon(); },
         enter() { stage = 0; applyStage(0, false); enterCommon(); },
         collapse() { collapseCommon(); }, // секція сповзає геть → лінія плавно в 0
-        dispose() { disarmHeads(); },
+        dispose() {}, // заголовки скрамбляться глобально (11-scramble.js) — тут нічого прибирати
         step(dir) {
           const ns = Math.max(0, Math.min(MAXST, stage + dir));
           if (ns === stage) return false;
@@ -670,7 +630,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         reset(toEnd) { state = toEnd ? NW - 1 : 0; setCards(state, false); setFill(state, false); setTexts(state === NW - 1); showCommon(); },
         enter() { state = 0; setCards(0, false); enterCommon(); },
         collapse() { collapseCommon(); }, // секція сповзає геть → лінія плавно в 0
-        dispose() { disarmHeads(); },
+        dispose() {}, // заголовки скрамбляться глобально (11-scramble.js) — тут нічого прибирати
         step(dir) {
           const ns = Math.max(0, Math.min(NW - 1, state + dir));
           if (ns === state) return false;
@@ -2064,23 +2024,23 @@ console.log('[Kulbit] 11-scramble.js завантажено');
     };
   };
 
-  // Налаштування: збираємо позначені елементи (крім is-our-clients), IO керує появою/виходом
-  const setupScramble = () => {
+  // Збірка/перезбірка: усі [data-kulbit-scramble], IO керує появою/виходом. Re-runnable на resize —
+  //   бо висота заголовка залежить від брейкпоінта (makeScramble відновлює оригінал і переміряє).
+  let io = null, resizeTimer = null;
+  const build = () => {
     const app = window.KulbitApp = window.KulbitApp || {};
     app.scrambles = app.scrambles || new Map();
-    const els = [...document.querySelectorAll('[data-kulbit-scramble]')]
-      .filter((el) => !el.closest('.is-our-clients'));    // is-our-clients має власну scramble-логіку
-    if (!els.length) {
-      console.log('[Kulbit-Scramble] елементів [data-kulbit-scramble] немає (поза is-our-clients)');
-      return;
-    }
+    if (io) io.disconnect();
+    app.scrambles.clear();
+    const els = [...document.querySelectorAll('[data-kulbit-scramble]')];
+    if (!els.length) { console.log('[Kulbit-Scramble] елементів [data-kulbit-scramble] немає'); return; }
     els.forEach((el) => {
       const ctrl = makeScramble(el);
       ctrl.setOut();                        // старт порожньо — зʼявляться скрамблом при вході у вьюпорт
       app.scrambles.set(el, ctrl);
     });
     // Поява у вьюпорті (наповзання секції) → IN; повний вихід → стираємо (готуємо до повторної появи)
-    const io = new IntersectionObserver((entries) => {
+    io = new IntersectionObserver((entries) => {
       entries.forEach((en) => {
         const ctrl = app.scrambles.get(en.target);
         if (!ctrl) return;
@@ -2089,8 +2049,9 @@ console.log('[Kulbit] 11-scramble.js завантажено');
       });
     }, { threshold: [0, 0.6] });
     els.forEach((el) => io.observe(el));
-    console.log('[Kulbit-Scramble] активний на', els.length, 'елемент(ах) (поза is-our-clients)');
+    console.log('[Kulbit-Scramble] активний на', els.length, 'елемент(ах)');
   };
 
-  document.addEventListener('DOMContentLoaded', setupScramble);
+  document.addEventListener('DOMContentLoaded', build);
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(build, 200); });
 })();
