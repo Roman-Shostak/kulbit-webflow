@@ -403,7 +403,7 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
 ```
 
-Підставляєш короткий хеш свіжого коміту (напр. `@a0d1a7c`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `a0d1a7c`** — для commit-pinned тесту коду підставляй саме `@a0d1a7c`. _Стабільна база: hero + is-our-clients (усі девайси) + is-projects свап (desktop + tablet/mobile) + контролі відео на tablet/mobile (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + персистентність позиції секції (sessionStorage, reload не скидає на hero). Усе підтверджено Romanom. Решта ADR-016 (auto-landscape fullscreen, «одне відео») — попереду; історія re-approach у git `50fb693`..`1500d68`._
+Підставляєш короткий хеш свіжого коміту (напр. `@efbb81a`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `efbb81a`** — для commit-pinned тесту коду підставляй саме `@efbb81a`. _Стабільна база: hero + is-our-clients (усі девайси) + is-projects свап (desktop + tablet/mobile) + контролі відео на tablet/mobile (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + персистентність позиції (sessionStorage) + **поворот девайса не ламає** (позиція тримається, hero-відео на всю висоту, scramble заголовка is-our-clients). Усе підтверджено Romanom (desktop + iPhone). Лишилось (необов'язкове): auto-landscape fullscreen на iOS (впирається в платформу), «одне відео». Історія re-approach — git `50fb693`..`1500d68`._
 
 > ⚠️ **Урок (регресія скролу 26.05.2026 — для майбутнього re-approach):** у `buildProjects` `section` = запис `app.sections` `{el, index, …}`, а НЕ DOM-елемент. `getComputedStyle(section)` кинув помилку → `registerAnimations` (matchMedia) впав ДО `setupObserver` → зник скрол на всьому сайті. Уроки: (1) у `buildProjects`/`build*` для DOM-операцій брати `section.el`, не `section`; (2) варто залишити захист — `init` обгортає `registerAnimations` у try/catch, щоб помилка білду не вбивала Observer (було в `c7b8470`, відкочено разом з рештою — повернути при re-approach).
 
@@ -476,14 +476,15 @@ chore: оновив build.js
 - [x] **is-projects tablet/mobile свап вікном 3** — ✅ (ADR-016 п.1, `a34408b`+`86b1c33`)
 - [x] **Елементи керування відео на tablet/mobile** — ✅ fullscreen через Vimeo SDK (нативний iOS), кнопка звуку = mute-toggle, перший клік play стартує (звук — окремою кнопкою, бо iOS не дає unmute у кліку старту), desktop fullscreen блокує навігацію-скрол (`64225c8`..`f032eab`)
 - [x] **Персистентність позиції секції** — ✅ sessionStorage, reload/перебудова не скидають на hero (ADR-016 п.5, `8e932f8`+`a0d1a7c`)
-- [ ] **Поворот+fullscreen UX** (крок D/B/C): у fullscreen поворот паузить відео (B); авто-landscape при fullscreen (C); поворот+вихід з fullscreen скидає на hero з кривими анімаціями (D)
+- [x] **Поворот девайса не ламає** — ✅ позиція тримається (персистентність, D), hero-відео на всю висоту після повороту (синхрон від visualViewport), scramble заголовка is-our-clients відновлюється (`8f0b71c`+`efbb81a`)
+- [~] **Поворот+fullscreen (необов'язкове):** B — у landscape відео паузиться (штатно: попап «поверни пристрій»); C — auto-landscape при fullscreen (iOS не дає `orientation.lock` — впирається в платформу, нативний Vimeo-fullscreen сам пропонує поворот). Roman поки не наполягає.
 - [ ] **is-projects:** решта ADR-016 — «грає одне відео»
 - [ ] **Крок 9:** попап-форма (`07-popup-form.js`)
 - [ ] **Крок 10:** фінальний поліш; **Крок 11:** клієнтське демо; **Крок 12:** продакшн-домен
 
 ### 🔖 Точка відновлення (26.05.2026 — стабільна база)
 
-**Поточний стабільний стан = `a0d1a7c`.** Hero + is-our-clients (всі девайси) + is-projects (DESKTOP плеєр+свап+прогрес + **tablet/mobile свап вікном 3**) + скрол над відео + **контролі відео на tablet/mobile** (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + **персистентність позиції** (sessionStorage) — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~98 KB.
+**Поточний стабільний стан = `efbb81a`.** Hero + is-our-clients (всі девайси) + is-projects (DESKTOP плеєр+свап+прогрес + **tablet/mobile свап вікном 3**) + скрол над відео + **контролі відео на tablet/mobile** (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + **персистентність позиції** (sessionStorage) + **стійкість до повороту девайса** (позиція тримається, hero-відео на всю висоту, scramble заголовка is-our-clients відновлюється) — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~98 KB.
 
 **Як сюди дійшли:** початковий батч ADR-016 (свап+персистентність+landscape разом) внесли багато проблем + регресію скролу → відкат до `f0928a9` (`3978c4d`). Потім **по одній фічі з тестом**: повернули лише свап вікном 3 (`a34408b` + фікс slotH `86b1c33`). **Урок (memory [[incremental-not-batched]]):** фічі по ОДНІЙ. Ще урок (memory [[mobile-zoom-before-css-debug]]): мобільний візуальний зсув на одному девайсі — спершу перевір `visualViewport.scale` (застряглий zoom), потім CSS.
 
