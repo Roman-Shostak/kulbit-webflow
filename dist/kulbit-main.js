@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-27T17:21:45.528Z */
+/* Kulbit Webflow — зібрано 2026-05-28T09:46:56.073Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -2084,25 +2084,25 @@ console.log('[Kulbit] 10-project-video.js завантажено');
 
 
 // ====================================================================
-// 11-scramble.js — Скрамбл-поява тексту за атрибутом [data-kulbit-scramble]
+// 11-scramble.js — Поява тексту за атрибутом (scramble АБО typewriter)
 //
-//   Будь-який текст із цим атрибутом «пишеться» скрамблом, коли зʼявляється
-//   у вьюпорті (наповзання секції), і стирається при виході (для повторної
-//   появи). Сегментує текст зі збереженням спанів (кольори) — як is-our-clients.
+//   Два атрибути, спільна механіка:
+//   • [data-kulbit-scramble]   — текст «пишеться» скрамблом (через GSAP ScrambleTextPlugin);
+//   • [data-kulbit-typewriter] — текст ДРУКУЄТЬСЯ по літерах (typewriter, без плагіна — tween числа).
 //
-//   Контролери зберігаються в app.scrambles (Map: el → { in, out, setOut }) —
-//   секції з власною хореографією (is-our-services: h2 стирається на кроці)
-//   можуть керувати вручну через app.scrambles.get(el).
+//   Обидва: зʼявляються коли елемент потрапляє у вьюпорт (наповзання секції), стираються на виході
+//   (для повторної появи). Сегментують вміст зі збереженням спанів (кольори).
 //
-//   ⚠️ Пропускає елементи всередині .is-our-clients — там власна scramble-логіка
-//      в buildOurClients (рефактор на цей модуль — окремим кроком).
+//   Контролери — у app.scrambles (Map: el → { in, out, setOut }) — секції з власною хореографією
+//   (is-our-services) керують вручну через app.scrambles.get(el). Re-runnable на resize.
 // ====================================================================
 
 console.log('[Kulbit] 11-scramble.js завантажено');
 
-// ## — Скрамбл-поява за атрибутом
+// ## — Поява тексту за атрибутом (scramble / typewriter)
 (() => {
   const SC = { chars: 'upperCase', speed: 1 };
+  const DUR = 1.2; // тривалість появи/стирання (секунди)
 
   // Розрізати вміст на сегменти [текст, клас] — щоб зберегти кольорові спани
   const parseSegments = (e) => {
@@ -2113,7 +2113,7 @@ console.log('[Kulbit] 11-scramble.js завантажено');
     });
     return segs;
   };
-  // Відбудувати DOM зі спанів (із текстом або без), повернути [span, text] для скрамблу
+  // Відбудувати DOM зі спанів (із текстом або без), повернути [span, text] для tween-ів
   const buildSegDOM = (c, segs, fillText) => {
     c.textContent = '';
     const targets = [];
@@ -2136,47 +2136,59 @@ console.log('[Kulbit] 11-scramble.js завантажено');
     return targets;
   };
 
-  // Контролер одного елемента: in (порожньо→текст), out (текст→порожньо), setOut (миттєво порожньо)
-  const makeScramble = (el) => {
-    // Оригінальний HTML зберігаємо ОДИН раз; при перебудові (поворот/брейкпоінт) відновлюємо —
-    //   бо scramble/setOut спорожнюють DOM, і повторний parse читав би порожнечу (як фікс is-our-clients).
+  // Контролер одного елемента: in (порожньо→текст), out (текст→порожньо), setOut (миттєво порожньо).
+  //   mode: 'scramble' (ScrambleTextPlugin) або 'typewriter' (tween числа + slice — без плагіна).
+  const makeReveal = (el, mode) => {
     if (el.dataset.scrOrig == null) el.dataset.scrOrig = el.innerHTML;
     else el.innerHTML = el.dataset.scrOrig;
     el.style.height = ''; el.style.overflow = '';
     const targets = buildSegDOM(el, parseSegments(el), true);
-    el.style.height = el.offsetHeight + 'px';   // фіксуємо висоту (стабільно при скрамблі)
+    el.style.height = el.offsetHeight + 'px';   // фіксуємо висоту (стабільно при появі/стиранні)
     el.style.overflow = 'hidden';
     let shown = true, tl = null;
     const animateTo = (show) => {
       if (tl) tl.kill();
       tl = gsap.timeline();
-      targets.forEach(([s, t]) => tl.to(s, { duration: 1.2, scrambleText: { text: show ? t : '', ...SC } }, 0));
+      targets.forEach(([s, t]) => {
+        if (mode === 'typewriter') {
+          // Друк по літерах: tween числа 0..1, onUpdate ріже текст по символах (без TextPlugin)
+          const o = { p: show ? 0 : 1 };
+          tl.to(o, {
+            p: show ? 1 : 0, duration: DUR, ease: 'none',
+            onUpdate: () => { s.textContent = t.slice(0, Math.ceil(o.p * t.length)); }
+          }, 0);
+        } else {
+          tl.to(s, { duration: DUR, scrambleText: { text: show ? t : '', ...SC } }, 0);
+        }
+      });
       shown = show;
     };
     return {
-      el,
+      el, mode,
       in()  { if (!shown) animateTo(true); },
       out() { if (shown) animateTo(false); },
       setOut() { if (tl) tl.kill(); targets.forEach(([s]) => { s.textContent = ''; }); shown = false; }
     };
   };
 
-  // Збірка/перезбірка: усі [data-kulbit-scramble], IO керує появою/виходом. Re-runnable на resize —
-  //   бо висота заголовка залежить від брейкпоінта (makeScramble відновлює оригінал і переміряє).
+  // Збірка/перезбірка: збираємо обидва атрибути, IO керує появою/виходом. Re-runnable на resize
+  //   (висота елемента залежить від брейкпоінта; makeReveal відновлює оригінал і переміряє).
   let io = null, resizeTimer = null;
   const build = () => {
     const app = window.KulbitApp = window.KulbitApp || {};
     app.scrambles = app.scrambles || new Map();
     if (io) io.disconnect();
     app.scrambles.clear();
-    const els = [...document.querySelectorAll('[data-kulbit-scramble]')];
-    if (!els.length) { console.log('[Kulbit-Scramble] елементів [data-kulbit-scramble] немає'); return; }
-    els.forEach((el) => {
-      const ctrl = makeScramble(el);
-      ctrl.setOut();                        // старт порожньо — зʼявляться скрамблом при вході у вьюпорт
+    const scrambleEls   = [...document.querySelectorAll('[data-kulbit-scramble]')].map((el) => [el, 'scramble']);
+    const typewriterEls = [...document.querySelectorAll('[data-kulbit-typewriter]')].map((el) => [el, 'typewriter']);
+    const all = [...scrambleEls, ...typewriterEls];
+    if (!all.length) { console.log('[Kulbit-Reveal] елементів [data-kulbit-scramble]/[data-kulbit-typewriter] немає'); return; }
+    all.forEach(([el, mode]) => {
+      const ctrl = makeReveal(el, mode);
+      ctrl.setOut();                        // старт порожньо — зʼявляться при вході у вьюпорт
       app.scrambles.set(el, ctrl);
     });
-    // Поява у вьюпорті (наповзання секції) → IN; повний вихід → стираємо (готуємо до повторної появи)
+    // Поява у вьюпорті → IN; повний вихід → стираємо (готуємо до повторної появи)
     io = new IntersectionObserver((entries) => {
       entries.forEach((en) => {
         const ctrl = app.scrambles.get(en.target);
@@ -2185,8 +2197,8 @@ console.log('[Kulbit] 11-scramble.js завантажено');
         else if (!en.isIntersecting) ctrl.out();
       });
     }, { threshold: [0, 0.6] });
-    els.forEach((el) => io.observe(el));
-    console.log('[Kulbit-Scramble] активний на', els.length, 'елемент(ах)');
+    all.forEach(([el]) => io.observe(el));
+    console.log('[Kulbit-Reveal] активний:', scrambleEls.length, 'scramble +', typewriterEls.length, 'typewriter');
   };
 
   document.addEventListener('DOMContentLoaded', build);
