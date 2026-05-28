@@ -20,3 +20,9 @@ tmp/
 
 kulbit-gsap.webflow
 console.js
+
+# Тимчасові SVG-вихідники working-process (готуються в Figma, вставляються в Webflow Embed; у бандл не входять)
+working-process-svg-*.svg
+
+# Reference-вихідники зі старих версій сайту (для звірення анімацій, не в бандл)
+gsap-old.js
