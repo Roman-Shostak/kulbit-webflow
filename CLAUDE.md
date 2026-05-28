@@ -200,6 +200,7 @@ window.KulbitApp = {
   goToSectionStep(index, step) { ... },     // кнопки: секція + конкретний крок (стекінг-позиції)
   passHero() { ... },         // привести hero-таймлайн у кінець → header зникає штатно (стрибок/відновлення на не-hero)
   persistSection() / restoreSection() { ... }, // позиція секції у sessionStorage (reload/поворот не скидають на hero)
+  buildHSwipe(mode) { ... },  // is-our-services (ADR-018): горизонтальний свап карток → section.hswipe (поява/крок1-заголовок/свап по x)
   resetSteps(section, shown) { ... },        // усі reveal-кроки секції сховати/показати
   playStep(section, i) / reverseStep(section, i) { ... }, // показати/сховати reveal-крок i
   handleResize() { ... },     // перевиставляє стекінг-позиції (100vh/yPercent самі адаптуються)
@@ -240,7 +241,8 @@ kulbit-webflow/
 │   ├── 07-popup-form.js         # Логіка попап-форми
 │   ├── 08-video.js              # Vimeo bg-відео (cover) + кнопка звуку ([data-kulbit-video]/[data-kulbit-sound])
 │   ├── 09-button-border.js      # Ховер: промальовка бордера від точки курсора ([data-kulbit-border])
-│   └── 10-project-video.js      # Vimeo-плеєр проєктів: cover + кастомні контроли ([data-kulbit-project-video], ADR-014)
+│   ├── 10-project-video.js      # Vimeo-плеєр проєктів: cover + кастомні контроли ([data-kulbit-project-video], ADR-014)
+│   └── 11-scramble.js           # Скрамбл-поява тексту за атрибутом [data-kulbit-scramble] (ADR-017)
 │
 └── dist/                        # Збірка для Webflow (генерується)
     └── kulbit-main.js           # Склеєний файл — підключається в Webflow
@@ -406,7 +408,7 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@<commit-hash>/dist/kulbit-main.js"></script>
 ```
 
-Підставляєш короткий хеш свіжого коміту (напр. `@b92db74`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `b92db74`** — для commit-pinned тесту коду підставляй саме `@b92db74`. **is-projects на mobile завершено повністю** (свап + контролі + «грає одне відео» + поворот у fullscreen) + **кнопки-навігація = автопрогравання** (швидке прокручування кроків+переходів до цілі, header зникає). _Стабільна база: hero + is-our-clients (усі девайси) + is-projects свап (desktop + tablet/mobile) + контролі відео на tablet/mobile (fullscreen через Vimeo SDK, mute-кнопка, desktop scroll-lock у fullscreen) + персистентність позиції (sessionStorage) + **поворот девайса не ламає** (позиція тримається, hero-відео на всю висоту, scramble заголовка is-our-clients). Усе підтверджено Romanom (desktop + iPhone). Лишилось (необов'язкове): auto-landscape fullscreen на iOS (впирається в платформу), «одне відео». Історія re-approach — git `50fb693`..`1500d68`._
+Підставляєш короткий хеш свіжого коміту (напр. `@481b16c`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `481b16c`** — для commit-pinned тесту коду підставляй саме `@481b16c`. _Стабільна база: hero + is-our-clients + is-projects (усі девайси) + контролі відео + персистентність + поворот не ламає + **кнопки-автопрогравання** + **scramble за атрибутом** (`11-scramble.js`, ADR-017) + **is-our-services горизонтальний свап карток** (ADR-018, усі брейкпоінти). Усе підтверджено Romanom (desktop + iPhone)._
 
 > ⚠️ **Урок (регресія скролу 26.05.2026 — для майбутнього re-approach):** у `buildProjects` `section` = запис `app.sections` `{el, index, …}`, а НЕ DOM-елемент. `getComputedStyle(section)` кинув помилку → `registerAnimations` (matchMedia) впав ДО `setupObserver` → зник скрол на всьому сайті. Уроки: (1) у `buildProjects`/`build*` для DOM-операцій брати `section.el`, не `section`; (2) варто залишити захист — `init` обгортає `registerAnimations` у try/catch, щоб помилка білду не вбивала Observer (було в `c7b8470`, відкочено разом з рештою — повернути при re-approach).
 
@@ -449,6 +451,8 @@ chore: оновив build.js
 - **ADR-012** — Динамічні брейкпоінти через `gsap.matchMedia` (992/768/479) — hero перебудовується без reload (`resetHeroState`/`teardownHero`); таймінг паузи відео — на завершенні накриття.
 - **ADR-013** — Покрокова хореографія `is-our-clients` (`section.oc` + ScrambleText): свап наборів карток + прогрес-бар + скрамбл заголовків за видимістю у вьюпорті (IntersectionObserver). Усі 3 брейкпоінти ✅ ПІДТВЕРДЖЕНО (`shiftN` per-mode).
 - **ADR-014** — Кастомний Vimeo-плеєр проєктів (`10-project-video.js`): cover + власні контроли (play/pause, seek+буфер, гучність-попап, fullscreen); `[data-kulbit-project-video]`; `pointer-events:none` на iframe (щоб колесо доходило до Observer). ✅
+- **ADR-017** — Скрамбл-поява тексту за атрибутом `data-kulbit-scramble` (`11-scramble.js`): глобальний переюзабельний механізм (IO + `app.scrambles` Map); is-our-clients переведено на нього. ✅ [[scramble-attribute]]
+- **ADR-018** — Секція `is-our-services` (`section.hswipe`): ГОРИЗОНТАЛЬНИЙ свап карток (`[data-kulbit-hswipe-group]`) + хореографія (поява знизу → крок 1: заголовок ховається + картки вгору → свап по x). Desktop/tablet — колапс h2 + margin-top:auto; mobile — ховає весь верх + картки до padding-top. ✅ усі брейкпоінти
 - **ADR-015** — Свап-секція `is-projects` (`section.pv`): вертикальний свап відео (`height 100↔0`) + END-картинка + прогрес-бар + фікс прогрес-лінії. ✅
 - **ADR-016** — 🔄 **ЧАСТКОВО ПОВЕРНЕНО 26.05.2026**: початковий батч (свап+персистентність+landscape) відкочено (`3978c4d`) через багато проблем. Тепер по одній: **п.1 tablet/mobile свап вікном 3 — ✅ У КОДІ** (`a34408b`+`86b1c33`, desktop+mobile підтверджено; `buildProjects` через `WIN`, `flex:none`+`height`, slotH від секції). Решта (персистентність/«одне відео»/landscape-fullscreen) + iOS-обмеження плеєра (fullscreen на div, гучність) — ще ні. Деталі — `docs/adr.md` ADR-016; код re-approach — git `50fb693`..`1500d68`.
 
@@ -470,6 +474,8 @@ chore: оновив build.js
 - [x] **Крок 8:** респонсив + landscape-попап + динамічний `matchMedia` (ADR-012)
 - [x] **HERO — повністю готова** на всіх брейкпоінтах (desktop ADR-009 / tablet+mobile ADR-011) + Vimeo bg-відео + стекінг
 - [x] **is-our-clients — повністю готова** на всіх 3 брейкпоінтах (ADR-013)
+- [x] **is-our-services — повністю готова** на всіх брейкпоінтах (ADR-018): горизонтальний свап карток + поява + крок 1 (заголовок ховається + картки вгору)
+- [x] **Скрамбл за атрибутом** `data-kulbit-scramble` (ADR-017, `11-scramble.js`) — глобально, is-our-clients переведено
 - [x] **is-projects** готова: плеєр (ADR-014) + свап + прогрес (ADR-015) на DESKTOP + **свап вікном 3 на tablet/mobile** (ADR-016 п.1) ✅
 - [x] Додатково: ховер-бордер кнопок (`09-button-border.js`), Vimeo bg-відео (`08-video.js`)
 
@@ -484,12 +490,16 @@ chore: оновив build.js
 - [x] **Поворот у fullscreen не паузить відео** — ✅ `videoFullscreen` guard у `06-responsive`/`08-video` (`867030e`+`feb0427`)
 - [~] **C (необов'язкове):** auto-landscape при fullscreen — iOS не дає `orientation.lock` (нативний Vimeo-fullscreen сам пропонує поворот). Roman не наполягає.
 - [x] **Кнопки-навігація = автопрогравання** — ✅ клік швидко прокручує всі кроки+переходи до цілі (як fullpage), header зникає (`autoAdvanceTo`/`passHero`, ADR-003, `b92db74`)
+- [x] **Скрамбл на атрибут** (ADR-017) + **is-our-services горизонтальний свап** (ADR-018) — ✅ усі брейкпоінти (`b23760b`..`481b16c`)
+- [~] **Крок 6:** решта секцій + footer — Roman верстає (анімуємо по готовності — атрибути ADR-009 / reveal / hswipe / scramble-атрибут)
 - [ ] **Крок 9:** попап-форма (`07-popup-form.js`)
 - [ ] **Крок 10:** фінальний поліш; **Крок 11:** клієнтське демо; **Крок 12:** продакшн-домен
 
 ### 🔖 Точка відновлення (27.05.2026 — стабільна база)
 
-**Поточний стабільний стан = `b92db74`.** Hero + is-our-clients (всі девайси) + is-projects (DESKTOP плеєр+свап+прогрес + **tablet/mobile свап вікном 3** + контролі для iOS + «грає одне відео» + поворот у fullscreen не паузить) + **персистентність позиції** (sessionStorage) + **стійкість до повороту девайса** (позиція, hero-відео на всю висоту, scramble заголовка) + **кнопки-навігація = автопрогравання** (`autoAdvanceTo`, як fullpage, header зникає) — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~99 KB.
+**Поточний стабільний стан = `481b16c`.** Hero + is-our-clients + **is-our-services** (горизонтальний свап карток, ADR-018) + is-projects (усі девайси) + контролі відео + персистентність + стійкість до повороту + кнопки-автопрогравання + **scramble за атрибутом** (`11-scramble.js`, ADR-017, is-our-clients переведено) — **усе підтверджене Romanом** (desktop + реальний iPhone Safari). Бандл ~117 KB.
+
+**Патерн для НОВИХ секцій (для майбутньої роботи):** покрокова секція інтегрується як `section.<name>` (аналог `oc`/`pv`/`hswipe`) з API `{ prepare, enter, collapse, reset, dispose, step }`, делегується в `advance`/`goToSection`/`teardownHero`/`matchMedia`. Заголовки — атрибут `data-kulbit-scramble` (само). Прогрес-бар `.section-progresbar` + дочірня `.<x>-fill`. Геометрію завжди МІРЯТИ в консолі перед кодом.
 
 **Як сюди дійшли (сесія 26-27.05.2026):** після відкату ADR-016 (`3978c4d`) повернули фічі **по одній з тестом**: свап вікном 3 → контролі відео iOS → персистентність → стійкість до повороту → «грає одне відео» → автопрогравання кнопок. Жодного батчу. **Уроки:** [[incremental-not-batched]] (по одній), [[mobile-zoom-before-css-debug]] (zoom перед CSS), [[ios-vimeo-unmute]] (розмут лише граючого відео в gesture; fullscreen на div не працює — тільки Vimeo SDK).
 
