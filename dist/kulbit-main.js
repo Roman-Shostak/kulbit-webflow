@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-28T09:46:56.073Z */
+/* Kulbit Webflow — зібрано 2026-05-28T09:50:24.584Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -2149,16 +2149,21 @@ console.log('[Kulbit] 11-scramble.js завантажено');
     const animateTo = (show) => {
       if (tl) tl.kill();
       tl = gsap.timeline();
+      // typewriter: spans пишуться ПОСЛІДОВНО (один за одним); тривалість span — пропорційна
+      //   його довжині (так усі літери йдуть з однаковою швидкістю, сумарно ≈ DUR).
+      const totalChars = mode === 'typewriter'
+        ? (targets.reduce((sum, [, t]) => sum + t.length, 0) || 1)
+        : 0;
       targets.forEach(([s, t]) => {
         if (mode === 'typewriter') {
-          // Друк по літерах: tween числа 0..1, onUpdate ріже текст по символах (без TextPlugin)
+          const spanDur = (t.length / totalChars) * DUR;
           const o = { p: show ? 0 : 1 };
           tl.to(o, {
-            p: show ? 1 : 0, duration: DUR, ease: 'none',
+            p: show ? 1 : 0, duration: spanDur, ease: 'none',
             onUpdate: () => { s.textContent = t.slice(0, Math.ceil(o.p * t.length)); }
-          }, 0);
+          }); // без position → у кінець попереднього (послідовно)
         } else {
-          tl.to(s, { duration: DUR, scrambleText: { text: show ? t : '', ...SC } }, 0);
+          tl.to(s, { duration: DUR, scrambleText: { text: show ? t : '', ...SC } }, 0); // scramble — паралельно
         }
       });
       shown = show;
