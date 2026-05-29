@@ -751,137 +751,285 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-HS]', mode, 'готовий | карток', total, '| maxState', maxState, '| h2H', Math.round(origH2), '| зсув', Math.round(cardW() + gap()) + 'px');
   };
 
-  // 03g — Working Process (section.wp): stack-cards з падінням активної.
-  //   Desktop: горизонтальний стек (наступні справа, xPercent 50, scale 0.85/0.70), падіння діагональ.
-  //   Tablet/Mobile: Z-stack (наступні рівно під, xPercent 0, scale 0.95/0.90), падіння прямо вниз.
-  //   Активна летить (xPercent/yPercent) + поворот -10°, opacity 0; ease 'power1.inOut' на всіх.
-  //   Slide трохи швидше за fall (DUR_SLIDE < DUR_FALL). z-index фіксований по DOM (75/50/25).
+  // 03g — Working Process (section.wp): REVEAL появи секції + STACK-CARDS, синхронізовані з SVG.
+  //   REVEAL (enter): bg малюється -> крапки спалахують по черзі -> хвостик -> 3 сірі дуги -> label ->
+  //     weeks -> синя+червона лінії; arrow1 промальовується БІЛОЮ суцільною поверх сірої + градієнт-тінь +
+  //     білий наконечник; dot1/dot2 білі; cards-wrapper виїзд + формування стеку; is-second.
+  //   КРОКИ (step): падіння активної + СИНХРОННА біла промальовка наступної стрілки (наступна картка
+  //     стає в центр рівно коли стрілка домалювалась) + білішання відповідної крапки; реверс на крок назад.
+  //   Вихід угору (collapse) -> reveal швидкий реверс (REV_SPEED). Desktop/tablet однаково; mobile спрощено.
+  //   ADR-019 (картки) + SVG-ітерація. Пунктир (bg/сірі дуги) малюється clip-sweep (без розтягу);
+  //   суцільні (blue/red/біла-клон) -- strokeDashoffset. Картки: z-index 75/50/25 фіксований по DOM.
   app.buildWorkingProcess = (mode) => {
     const section = app.sections.find((s) => s.el.classList.contains('is-working-process'));
     if (!section) return;
-    const cards = [...section.el.querySelectorAll('.working-process-card')];
+    const sec = section.el;
+    const cards = [...sec.querySelectorAll('.working-process-card')];
     if (cards.length < 2) { console.warn('[Kulbit-WP] замало карток'); return; }
 
+    const NS = 'http://www.w3.org/2000/svg';
     const VERTICAL = mode !== 'desktop';
-    // Падіння активної
-    const FALL_X_PCT    = VERTICAL ? 0   : -50;
-    const FALL_Y_PCT    = VERTICAL ? 100 : 50;
-    const FALL_ROTATION = -10;
-    // Стек (rank 1+)
-    const STACK_X_PCT      = VERTICAL ? 0    : 50;
-    const STACK_SCALE_STEP = VERTICAL ? 0.05 : 0.15;
-    const DARK_OPACITY     = 0.4;
-    // Тривалості + ease
-    const DUR_FALL  = 0.9;
-    const DUR_SLIDE = 0.75;
-    const EASE      = 'power1.inOut';
-    const Z_VALUES  = [75, 50, 25];
+    const FALL_X = VERTICAL ? 0 : -50, FALL_Y = VERTICAL ? 100 : 50, FALL_ROT = -10;
+    const STACK_X = VERTICAL ? 0 : 50, STACK_SS = VERTICAL ? 0.05 : 0.15, DARK = 0.4;
+    const Z_VALUES = [75, 50, 25];
+    const DUR_FALL = 0.9, DUR_SLIDE = 0.75, EASE = 'power1.inOut';
+    const DUR_BG = 0.7, DUR_ARROW = 0.4, DUR_LABEL = 0.5, WK_STAG = 0.1, WK_DUR = 0.4;
+    const DUR_BLUE = 0.7, DUR_RED = 0.45, DUR_AWHITE = 0.6, DUR_GRAD = 0.6, DUR_DOTCOL = 0.3, DUR_CARDSWRAP = 0.5;
+    const WHITE_END_GAP = 5;   // px: біла лінія не доходить до кінчика наконечника
+    const REV_SPEED = 5;       // у скільки разів швидша зворотна анімація при виході з секції
+    const WHITE10 = (getComputedStyle(sec).getPropertyValue('--colors--white-10') || '').trim() || '#fdfcfc';
 
+    const maxState = cards.length - 1;
+    const ovOf = (c) => c.querySelector('.kulbit-wp-overlay');
     const cardW = cards[0].getBoundingClientRect().width;
 
-    // Розставити: i=0 лишається relative (центрована flex), i>0 - absolute, центрована по wrapper.
-    //   Overlay для затемнення стеку (чорний з opacity на rank>0).
+    // HTML-блоки появи
+    const labelWrap   = sec.querySelector('.working-process-label-wrapper:not(.is-second)');
+    const labelSecond = sec.querySelector('.working-process-label-wrapper.is-second');
+    const weeks       = [...sec.querySelectorAll('.working-process-week')];
+    const cardsWrapper = sec.querySelector('.working-process-cards-wrapper');
+
+    // -- розкладка карток: i=0 relative; i>0 absolute центрована; overlay для затемнення стеку --
     cards.forEach((c, i) => {
       c.style.transformOrigin = '50% 50%';
-      c.style.zIndex          = String(Z_VALUES[i] || 25);
-      if (i > 0) {
-        c.style.position   = 'absolute';
-        c.style.top        = '0';
-        c.style.left       = '50%';
-        c.style.marginLeft = (-cardW / 2) + 'px';
-      }
-      let ov = c.querySelector('.kulbit-wp-overlay');
+      c.style.zIndex = String(Z_VALUES[i] || 25);
+      if (i > 0) { c.style.position = 'absolute'; c.style.top = '0'; c.style.left = '50%'; c.style.marginLeft = (-cardW / 2) + 'px'; }
+      let ov = ovOf(c);
       if (!ov) {
-        ov = document.createElement('div');
-        ov.className = 'kulbit-wp-overlay';
-        Object.assign(ov.style, {
-          position: 'absolute', inset: '0',
-          background: '#000', opacity: '0',
-          borderRadius: getComputedStyle(c).borderRadius,
-          pointerEvents: 'none', zIndex: '10'
-        });
+        ov = document.createElement('div'); ov.className = 'kulbit-wp-overlay';
+        Object.assign(ov.style, { position: 'absolute', inset: '0', background: '#000', opacity: '0', borderRadius: getComputedStyle(c).borderRadius, pointerEvents: 'none', zIndex: '10' });
         c.appendChild(ov);
       }
     });
 
-    const maxState = cards.length - 1; // 3 картки → states 0/1/2 → maxState = 2
-    let state = 0;
+    // ===== активна SVG-діаграма (з лінією bg, видима на цьому брейкпоінті) =====
+    const svgs = [...sec.querySelectorAll('svg')];
+    const svg = svgs.find((s) => s.querySelector('[data-kulbit-svg-line]') && s.getBoundingClientRect().width > 1 && s.offsetParent !== null)
+             || svgs.find((s) => s.querySelector('[data-kulbit-svg-line]') && s.getBoundingClientRect().width > 1) || null;
 
-    const apply = (a, instant) => {
-      state = a;
-      cards.forEach((c, i) => {
-        const ov   = c.querySelector('.kulbit-wp-overlay');
-        const rank = i - a; // 0 — активна, 1+ — у стеку, <0 — впала
-        if (instant) {
-          if (rank < 0) {
-            gsap.set(c,  { xPercent: FALL_X_PCT, yPercent: FALL_Y_PCT, scale: 1, rotation: FALL_ROTATION, opacity: 0 });
-            gsap.set(ov, { opacity: 0 });
-          } else if (rank === 0) {
-            gsap.set(c,  { xPercent: 0, yPercent: 0, scale: 1, rotation: 0, opacity: 1 });
-            gsap.set(ov, { opacity: 0 });
-          } else {
-            gsap.set(c, {
-              xPercent: STACK_X_PCT * rank, yPercent: 0,
-              scale: 1 - STACK_SCALE_STEP * rank,
-              rotation: 0, opacity: 1
-            });
-            gsap.set(ov, { opacity: DARK_OPACITY * rank });
-          }
-          return;
-        }
-        if (rank < 0) {
-          gsap.to(c, {
-            xPercent: FALL_X_PCT, yPercent: FALL_Y_PCT,
-            rotation: FALL_ROTATION, opacity: 0,
-            duration: DUR_FALL, ease: EASE
-          });
-          gsap.to(ov, { opacity: 0, duration: DUR_FALL, ease: EASE });
-        } else if (rank === 0) {
-          gsap.to(c, {
-            xPercent: 0, yPercent: 0, scale: 1, rotation: 0, opacity: 1,
-            duration: DUR_SLIDE, ease: EASE
-          });
-          gsap.to(ov, { opacity: 0, duration: DUR_SLIDE, ease: EASE });
-        } else {
-          gsap.to(c, {
-            xPercent: STACK_X_PCT * rank, yPercent: 0,
-            scale: 1 - STACK_SCALE_STEP * rank,
-            rotation: 0, opacity: 1,
-            duration: DUR_SLIDE, ease: EASE
-          });
-          gsap.to(ov, { opacity: DARK_OPACITY * rank, duration: DUR_SLIDE, ease: EASE });
-        }
-      });
+    const cleanSVG = () => {
+      if (!svg) return;
+      [...svg.querySelectorAll('clipPath')].forEach((cp) => { if (cp.id && cp.id.indexOf('wpClip') === 0) cp.remove(); });
+      [...svg.querySelectorAll('[id^="wpW"]')].forEach((el) => el.remove());
+    };
+    cleanSVG(); // прибрати рудименти попередньої побудови
+
+    let bg = null, blue = null, red = null, tail = null;
+    let dotRings = [], arrowParts = [], arrowNums = [], greyStroke = null, greyHead = null;
+    let W = 0, H = 0, bgRect = null, blueLen = 0, redLen = 0;
+    const arrowRects = {}, whiteClones = {};
+    const dotByN = (n) => dotRings.find((d) => d.getAttribute('data-kulbit-svg-dot') === String(n));
+    const innerOf = (ring) => ring.nextElementSibling;
+    const arrowGroup = (n) => {
+      const parts = arrowParts.filter((el) => el.getAttribute('data-kulbit-svg-arrow') === String(n));
+      return { line: parts.find((el) => el.getAttribute('data-kulbit-svg-part') === 'line'), head: parts.find((el) => el.getAttribute('data-kulbit-svg-part') === 'head'), fill: parts.find((el) => el.getAttribute('data-kulbit-svg-part') === 'fill') };
     };
 
-    apply(0, true); // стартовий стек (картка 1 активна, 2 і 3 у стеку)
+    if (svg) {
+      const vb = (svg.getAttribute('viewBox') || '0 0 0 0').split(' ');
+      W = parseFloat(vb[2]); H = parseFloat(vb[3]);
+      const lines = [...svg.querySelectorAll('[data-kulbit-svg-line]')];
+      const byLine = (v) => lines.find((el) => el.getAttribute('data-kulbit-svg-line') === v);
+      bg = byLine('bg'); blue = byLine('blue'); red = byLine('red');
+      tail = svg.querySelector('[data-kulbit-svg-tail]');
+      dotRings = [...svg.querySelectorAll('[data-kulbit-svg-dot]')];
+      arrowParts = [...svg.querySelectorAll('[data-kulbit-svg-arrow]')];
+      arrowNums = [...new Set(arrowParts.map((el) => +el.getAttribute('data-kulbit-svg-arrow')))].sort((a, b) => a - b);
+
+      // сірі кольори зчитуємо до наших сетів (для коректного реверсу fromTo)
+      greyStroke = dotByN(1) ? getComputedStyle(dotByN(1)).stroke : null;
+      greyHead = arrowGroup(1).head ? getComputedStyle(arrowGroup(1).head).fill : null;
+
+      const makeClip = (id, x0) => {
+        const cp = document.createElementNS(NS, 'clipPath'); cp.setAttribute('id', id); cp.setAttribute('clipPathUnits', 'userSpaceOnUse');
+        const rc = document.createElementNS(NS, 'rect'); rc.setAttribute('x', '0'); rc.setAttribute('y', '0'); rc.setAttribute('width', String(x0)); rc.setAttribute('height', String(H));
+        cp.appendChild(rc); svg.appendChild(cp); return rc;
+      };
+
+      // стартово приховані svg-вузли
+      arrowNums.forEach((n) => { const g = arrowGroup(n); if (g.fill) gsap.set(g.fill, { autoAlpha: 0 }); });
+      if (tail) gsap.set(tail, { autoAlpha: 0 });
+      dotRings.forEach((r) => { const inn = innerOf(r); [r, inn].filter(Boolean).forEach((el) => gsap.set(el, { autoAlpha: 0 })); });
+      [blue, red].filter(Boolean).forEach((el) => gsap.set(el, { autoAlpha: 0 }));
+
+      if (bg) { bgRect = makeClip('wpClipBg', 0); bg.setAttribute('clip-path', 'url(#wpClipBg)'); }
+
+      arrowNums.forEach((n) => {
+        const g = arrowGroup(n); if (!g.line) return;
+        const bb = g.line.getBBox(); const hb = g.head ? g.head.getBBox() : null;
+        const x0 = Math.floor(bb.x); const x1 = Math.ceil(Math.max(bb.x + bb.width, hb ? hb.x + hb.width : 0)) + 2;
+        const rc = makeClip('wpClipArrow' + n, x0);
+        g.line.setAttribute('clip-path', 'url(#wpClipArrow' + n + ')');
+        if (g.head) g.head.setAttribute('clip-path', 'url(#wpClipArrow' + n + ')');
+        gsap.set([g.line, g.head].filter(Boolean), { autoAlpha: 1 });
+        arrowRects[n] = { rc, x0, x1 };
+      });
+
+      blueLen = blue ? blue.getTotalLength() : 0;
+      redLen = red ? red.getTotalLength() : 0;
+
+      // білі клони стрілок (arrow1 -- у reveal; решта -- на кроках); усі стартують недомальовані
+      arrowNums.forEach((n) => {
+        const g = arrowGroup(n); if (!g.line) return;
+        const cl = g.line.cloneNode(true); cl.setAttribute('id', 'wpW' + n);
+        cl.removeAttribute('data-kulbit-svg-arrow'); cl.removeAttribute('data-kulbit-svg-part'); cl.removeAttribute('clip-path');
+        cl.style.stroke = WHITE10; cl.style.strokeWidth = '2'; cl.style.fill = 'none';
+        g.line.parentNode.insertBefore(cl, g.line.nextSibling);
+        const len = cl.getTotalLength(); gsap.set(cl, { strokeDasharray: len, strokeDashoffset: len });
+        whiteClones[n] = { el: cl, len };
+      });
+    }
+
+    // HTML стартово приховані; картки складені під основною
+    const htmlEls = [labelWrap, labelSecond, ...weeks].filter(Boolean);
+    if (htmlEls.length) gsap.set(htmlEls, { autoAlpha: 0, y: 40 });
+    if (cardsWrapper) gsap.set(cardsWrapper, { autoAlpha: 0, y: 40 });
+
+    let state = 0;
+
+    // картки: вектор стану
+    const cardVars = (i, s) => {
+      const rank = i - s;
+      if (rank < 0) return { card: { xPercent: FALL_X, yPercent: FALL_Y, scale: 1, rotation: FALL_ROT, opacity: 0 }, ov: { opacity: 0 } };
+      if (rank === 0) return { card: { xPercent: 0, yPercent: 0, scale: 1, rotation: 0, opacity: 1 }, ov: { opacity: 0 } };
+      return { card: { xPercent: STACK_X * rank, yPercent: 0, scale: 1 - STACK_SS * rank, rotation: 0, opacity: 1 }, ov: { opacity: DARK * rank } };
+    };
+    const resetCardsToStart = () => { // reveal-старт: ПОВНИЙ reset усіх карток (вкл. yPercent) -> основна по центру, решта складена під нею
+      cards.forEach((c) => { gsap.set(c, { xPercent: 0, yPercent: 0, scale: 1, rotation: 0, opacity: 1 }); const ov = ovOf(c); if (ov) gsap.set(ov, { opacity: 0 }); });
+    };
+    resetCardsToStart();
+
+    // крок-SVG (стрілки 2+, крапки 3+): миттєвий стан для state s
+    const setStepSVGInstant = (s) => {
+      arrowNums.forEach((n) => {
+        if (n < 2) return; // arrow1 -- у reveal
+        const drawn = n <= s + 1; const wc = whiteClones[n]; const g = arrowGroup(n);
+        if (wc) gsap.set(wc.el, { strokeDashoffset: drawn ? WHITE_END_GAP : wc.len });
+        if (g.fill) gsap.set(g.fill, { autoAlpha: drawn ? 1 : 0 });
+        if (g.head && greyHead) gsap.set(g.head, { fill: drawn ? WHITE10 : greyHead });
+      });
+      dotRings.forEach((r) => { const n = +r.getAttribute('data-kulbit-svg-dot'); if (n < 3 || !greyStroke) return; gsap.set(r, { stroke: n <= s + 2 ? WHITE10 : greyStroke }); });
+    };
+    setStepSVGInstant(0);
+
+    // миттєвий ПОВНИЙ стан (cards + усе svg) для state s -- для reset (persistence/jump)
+    const setStateInstant = (s) => {
+      cards.forEach((c, i) => { const v = cardVars(i, s); gsap.set(c, v.card); const ov = ovOf(c); if (ov) gsap.set(ov, v.ov); });
+      setStepSVGInstant(s);
+      state = s;
+    };
+
+    // ===== REVEAL timeline (програється на enter, реверситься на collapse) =====
+    const revealTL = gsap.timeline({ paused: true, onComplete: () => { app.isAnimating = false; } });
+    (() => {
+      const tl = revealTL;
+      if (svg && bgRect) {
+        tl.fromTo(bgRect, { attr: { width: 0 } }, { attr: { width: W }, duration: DUR_BG, ease: 'none' }, 0);
+        dotRings.forEach((r) => { const at = (parseFloat(r.getAttribute('cx')) / W) * DUR_BG; const inn = innerOf(r); [r, inn].filter(Boolean).forEach((el) => tl.to(el, { autoAlpha: 1, duration: 0.25, ease: 'power1.out' }, at)); });
+        if (tail) tl.to(tail, { autoAlpha: 1, duration: 0.2, ease: 'power1.out' }, DUR_BG);
+        arrowNums.forEach((n, i) => { const a = arrowRects[n]; if (a) tl.fromTo(a.rc, { attr: { width: a.x0 } }, { attr: { width: a.x1 }, duration: DUR_ARROW, ease: 'none' }, DUR_BG + i * DUR_ARROW); });
+      }
+      const afterArrows = svg ? DUR_BG + arrowNums.length * DUR_ARROW : 0.2;
+      if (labelWrap) tl.to(labelWrap, { autoAlpha: 1, y: 0, duration: DUR_LABEL, ease: 'power2.out' }, afterArrows);
+      const weeksStart = afterArrows + 0.25;
+      if (weeks.length) tl.to(weeks, { autoAlpha: 1, y: 0, duration: WK_DUR, ease: 'power2.out', stagger: WK_STAG }, weeksStart);
+      const weeksEnd = weeks.length ? (weeksStart + (weeks.length - 1) * WK_STAG + WK_DUR) : afterArrows;
+
+      const phase = weeksEnd + 0.15, whiteEnd = phase + DUR_AWHITE, redStart = phase + DUR_BLUE, redEnd = redStart + DUR_RED;
+
+      if (blue && blueLen) tl.fromTo(blue, { autoAlpha: 1, strokeDasharray: blueLen, strokeDashoffset: blueLen }, { strokeDashoffset: 0, duration: DUR_BLUE, ease: 'none' }, phase);
+      if (red && redLen) tl.fromTo(red, { autoAlpha: 1, strokeDasharray: redLen, strokeDashoffset: redLen }, { strokeDashoffset: 0, duration: DUR_RED, ease: 'none' }, redStart);
+
+      const a1 = arrowGroup(1);
+      if (whiteClones[1]) tl.fromTo(whiteClones[1].el, { strokeDashoffset: whiteClones[1].len }, { strokeDashoffset: WHITE_END_GAP, duration: DUR_AWHITE, ease: 'power1.inOut' }, phase);
+      if (a1.fill) tl.to(a1.fill, { autoAlpha: 1, duration: DUR_GRAD, ease: 'power1.out' }, phase);
+      if (a1.head && greyHead) tl.fromTo(a1.head, { fill: greyHead }, { fill: WHITE10, duration: DUR_AWHITE * 0.55, ease: 'power1.inOut' }, phase + DUR_AWHITE * 0.45);
+      if (dotByN(1) && greyStroke) tl.fromTo(dotByN(1), { stroke: greyStroke }, { stroke: WHITE10, duration: DUR_DOTCOL, ease: 'power1.out' }, phase);
+      if (dotByN(2) && greyStroke) tl.fromTo(dotByN(2), { stroke: greyStroke }, { stroke: WHITE10, duration: DUR_DOTCOL, ease: 'power1.out' }, whiteEnd);
+
+      if (cardsWrapper) tl.fromTo(cardsWrapper, { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, duration: DUR_CARDSWRAP, ease: 'power2.out' }, whiteEnd);
+      const slideAt = whiteEnd + 0.3;
+      cards.forEach((c, i) => { if (i === 0) return; const ov = ovOf(c); tl.fromTo(c, { xPercent: 0, yPercent: 0, scale: 1, rotation: 0, opacity: 1 }, { xPercent: STACK_X * i, scale: 1 - STACK_SS * i, duration: DUR_SLIDE, ease: EASE }, slideAt); if (ov) tl.fromTo(ov, { opacity: 0 }, { opacity: DARK * i, duration: DUR_SLIDE, ease: EASE }, slideAt); });
+
+      if (labelSecond) tl.to(labelSecond, { autoAlpha: 1, y: 0, duration: DUR_LABEL, ease: 'power2.out' }, redEnd);
+    })();
+
+    // ===== крок карток + синхронна SVG =====
+    let stepTL = null;
+    const stepTo = (target) => {
+      target = Math.max(0, Math.min(maxState, target));
+      if (target === state) return false;
+      const dir = target > state ? 1 : -1;
+      const hi = Math.max(state, target);
+      const arrowN = hi + 1, dotN = hi + 2; // 0<->1: стрілка2/крапка3 ; 1<->2: стрілка3/крапка4
+      if (stepTL) stepTL.kill();
+      app.isAnimating = true;
+      stepTL = gsap.timeline({ onComplete: () => { app.isAnimating = false; } });
+      // картки
+      cards.forEach((c, i) => {
+        const v = cardVars(i, target); const ov = ovOf(c); const dur = (i - target) < 0 ? DUR_FALL : DUR_SLIDE;
+        stepTL.to(c, Object.assign({ duration: dur, ease: EASE }, v.card), 0);
+        if (ov) stepTL.to(ov, Object.assign({ duration: dur, ease: EASE }, v.ov), 0);
+      });
+      // SVG синхронно: стрілка домальовується разом із карткою-в-центр (DUR_SLIDE)
+      if (svg) {
+        const wc = whiteClones[arrowN], g = arrowGroup(arrowN), dotEl = dotByN(dotN);
+        if (dir > 0) {
+          if (wc) stepTL.to(wc.el, { strokeDashoffset: WHITE_END_GAP, duration: DUR_SLIDE, ease: EASE }, 0);
+          if (g.fill) stepTL.to(g.fill, { autoAlpha: 1, duration: DUR_SLIDE, ease: 'power1.out' }, 0);
+          if (g.head && greyHead) stepTL.to(g.head, { fill: WHITE10, duration: DUR_SLIDE * 0.55, ease: EASE }, DUR_SLIDE * 0.45);
+          if (dotEl && greyStroke) stepTL.to(dotEl, { stroke: WHITE10, duration: DUR_DOTCOL, ease: 'power1.out' }, DUR_SLIDE); // після стрілки
+        } else {
+          if (wc) stepTL.to(wc.el, { strokeDashoffset: wc.len, duration: DUR_SLIDE, ease: EASE }, 0);
+          if (g.fill) stepTL.to(g.fill, { autoAlpha: 0, duration: DUR_SLIDE, ease: 'power1.out' }, 0);
+          if (g.head && greyHead) stepTL.to(g.head, { fill: greyHead, duration: DUR_SLIDE * 0.55, ease: EASE }, 0);
+          if (dotEl && greyStroke) stepTL.to(dotEl, { stroke: greyStroke, duration: DUR_DOTCOL, ease: 'power1.out' }, 0);
+        }
+      }
+      state = target;
+      return true;
+    };
 
     section.isWP = true;
     section.wp = {
       get state() { return state; },
-      prepare() { apply(0, true); },                       // наїзд секції — миттєво стартовий стек
-      enter()   { apply(0, true); },                       // повне накриття — той самий стек (без appearance)
-      collapse() {},                                       // прогрес-бара немає (SVG-лінія сама за себе)
-      reset(toEnd) { apply(toEnd ? maxState : 0, true); }, // миттєвий стан (persistence/jump)
-      dispose() {                                          // вихід з брейкпоінта — повертаємо CSS
+      prepare() {                                   // підхід згори -> стартовий прихований стан
+        if (stepTL) stepTL.kill();
+        state = 0;
+        revealTL.timeScale(1).pause(0);
+        resetCardsToStart();
+        setStepSVGInstant(0);
+      },
+      enter() {                                     // повне накриття -> reveal вперед (блокуємо скрол на час)
+        app.isAnimating = true;
+        revealTL.timeScale(1).play();
+      },
+      collapse() { revealTL.timeScale(REV_SPEED).reverse(); },   // вихід угору -> швидкий реверс
+      reset(toEnd) {                                // миттєвий стан (persistence/jump)
+        if (stepTL) stepTL.kill();
+        revealTL.timeScale(1).progress(1).pause(); // reveal-елементи у кінець
+        setStateInstant(toEnd ? maxState : 0);     // cards + усе svg для стану
+      },
+      dispose() {                                   // вихід з брейкпоінта -- повне очищення
+        revealTL.kill(); if (stepTL) stepTL.kill();
+        cleanSVG();
+        [bg, ...arrowParts].forEach((el) => el && el.removeAttribute('clip-path'));
+        const svgEls = [bg, blue, red, tail, ...arrowParts, ...dotRings];
+        dotRings.forEach((r) => { const inn = innerOf(r); if (inn) svgEls.push(inn); });
+        [...svgEls, labelWrap, labelSecond, ...weeks, cardsWrapper].filter(Boolean).forEach((el) => gsap.set(el, { clearProps: 'all' }));
         cards.forEach((c) => {
           gsap.set(c, { clearProps: 'all' });
-          c.style.position = ''; c.style.top = ''; c.style.left = '';
-          c.style.marginLeft = ''; c.style.zIndex = ''; c.style.transformOrigin = '';
-          const ov = c.querySelector('.kulbit-wp-overlay');
-          if (ov) ov.remove();
+          c.style.position = ''; c.style.top = ''; c.style.left = ''; c.style.marginLeft = ''; c.style.zIndex = ''; c.style.transformOrigin = '';
+          const ov = ovOf(c); if (ov) ov.remove();
         });
       },
       step(dir) {
         const ns = Math.max(0, Math.min(maxState, state + dir));
-        if (ns === state) return false; // межа → advance викличе goToSection
-        app.isAnimating = true;
-        apply(ns, false);
-        gsap.delayedCall(DUR_FALL, () => { app.isAnimating = false; });
-        return true;
+        if (ns === state) return false; // межа -> advance викличе goToSection
+        return stepTo(ns);
       }
     };
-    console.log('[Kulbit-WP]', mode, 'готовий | карток', cards.length, '| maxState', maxState, '| режим', VERTICAL ? 'vertical' : 'horizontal');
+    console.log('[Kulbit-WP]', mode, 'готовий | карток', cards.length, '| maxState', maxState, '| svg', !!svg, '| стрілок', arrowNums.length, '| режим', VERTICAL ? 'vertical' : 'horizontal');
   };
 
   // 04 — Побудова паузованого таймлайну секції з атрибутів.
