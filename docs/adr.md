@@ -311,7 +311,9 @@
 
 ### ADR-019: Секція is-working-process — STACK-CARDS з падінням активної (`section.wp`)
 
-**Рішення:** секція `is-working-process` — 3 картки (3 етапи), активна по центру, наступні в стеку. При скролі активна "падає" з поворотом, наступна стає на її місце. Інтегровано як `section.wp` (аналог `pv`/`oc`/`hswipe`). ✅ Усі брейкпоінти, 28.05.2026, `9931dd6`. **SVG-частина (нижня лінія + крапки + стрілки) — окремою ітерацією пізніше.**
+**Рішення:** секція `is-working-process` — 3 картки (3 етапи), активна по центру, наступні в стеку. При скролі активна "падає" з поворотом, наступна стає на її місце. Інтегровано як `section.wp` (аналог `pv`/`oc`/`hswipe`). ✅ Усі брейкпоінти, 28.05.2026, `9931dd6`. **SVG-частина (нижня лінія + крапки + стрілки) — реалізована окремою ітерацією, див. нижче (`0d35cbf`, 29.05.2026).**
+
+> ⚠️ Нижче (Машина станів / Параметри / API) описує ПЕРВИННУ card-only реалізацію (`apply`). У SVG-ітерації (`0d35cbf`) `apply` замінено на `revealTL` + `stepTo` + `setStateInstant` (див. розділ «SVG-ітерація» наприкінці ADR). Параметри карток (падіння/стек/z-index/overlay/DUR/ease) збережено.
 
 **Машина станів (`buildWorkingProcess(mode)`, `03-sections.js` блок 03g):** `maxState = cards.length − 1`. Стан `state = active` (індекс активної картки). При `apply(a, instant)` для кожної картки рахується `rank = i − a`: `<0` — впала, `0` — активна (центр), `≥1` — у стеку.
 
@@ -332,6 +334,23 @@
 - `step(dir)` — `apply(state+dir)`; повертає `false` на межі → `advance` робить `goToSection`.
 
 **Ітерації узгодження параметрів (Roman, ~10 циклів):** спершу пробували вертикальний стек (вниз) → відкинуто; потім горизонтальний з активною зліва → відкинуто; зупинились на активній по центру (з-під неї стек справа на desktop, або Z-stack на tablet/mobile). Поворот: спершу `+14` → інша сторона `-14` → м'якший `-10`. Anticipation (відстрибнути вгору перед падінням) додавали через `back.in(1.7)` ease → Roman прибрав. Ease: `sine.inOut` → `power3.out` (різко) → `power2.out` → фінально `power1.inOut` (як в old-коді). DUR: 1.4 → асимметрія 0.9/0.75.
+
+---
+
+#### ADR-019 SVG-ітерація: REVEAL появи + step-синхрон карток зі стрілками (`0d35cbf`, 29.05.2026)
+
+`buildWorkingProcess` переписано: `apply` замінено на паузований `revealTL` (поява секції) + `stepTo` (крок карток, синхронний зі SVG) + `setStateInstant` (миттєвий стан). SVG-діаграма — 3 embed-SVG (`working-process-svg-{desktop,tablet,mobile}.svg`, у `.gitignore`, не в бандл); атрибути `data-kulbit-svg-line="bg|blue|red"` / `-arrow="N"`+`-part="line|head|fill"` / `-dot="N"` / `-tail`. Активний svg добирається за видимістю (`width>1 && offsetParent`) — Webflow ховає неактивні `display:none`.
+
+- **REVEAL (`enter`, вхід вниз):** `bg` (пунктир) clip-sweep зліва-направо → крапки спалахують коли край clip-а дійшов до `cx` (sync `cx/W`) → хвостик → 3 сірі дуги clip-sweep по черзі → `.working-process-label-wrapper` виїзд знизу+opacity → `.working-process-week` stagger → синя+червона прогрес-лінії (`strokeDashoffset`) → `arrow1` промальовується БІЛИМ клоном поверх сірої + градієнт-тінь (`fill` 0→1) + білий наконечник; `dot1`/`dot2` `stroke`→`--colors--white-10` → `.working-process-cards-wrapper` виїзд + 2 картки виповзають з-під основної у стек → `is-second` виїзд. Прискорення `REVEAL_SPEED=1.7` (`timeScale` на `enter`). На час reveal блокуємо скрол (`app.isAnimating=true` у `enter`, знімається в `revealTL.onComplete`).
+- **КРОК (`step`):** падіння активної (`DUR_FALL`) + наступна в центр (`DUR_SLIDE`) СИНХРОННО з білою промальовкою наступної стрілки (та сама `DUR_SLIDE` зі старту 0 → фінішують разом), після стрілки відповідна крапка→white-10. `arrow(hi+1)`/`dot(hi+2)`, `hi=max(state,target)`. Реверс на крок назад.
+- **Остання крапка (red-end / «Traditional») лишається СІРОЮ** на всіх брейкпоінтах: whiten лише `dot < dotRings.length` (desktop `dot5`, mobile `dot3`).
+- **Вихід угору (`collapse`):** `revealTL.timeScale(REV_SPEED=5).reverse()` — швидкий зворотний reveal.
+- **persistence/jump (`reset(toEnd)`):** `revealTL.progress(1).pause()` + `setStateInstant(toEnd ? maxState : 0)`.
+- **`dispose`:** kill `revealTL`+`stepTL` + `cleanSVG` (видалити `clipPath#wpClip*` + білі клони `#wpW*`) + `removeAttribute clip-path` + `clearProps` на svg/html/cards + reset CSS карток + видалення overlay.
+
+**Техніки:** пунктир (`bg`/сірі дуги) «малюється» **clip-rect**-ом (`clipPathUnits=userSpaceOnUse`, `width` через `attr` fromTo) — пунктир не розтягується. Суцільні (`blue`/`red`/біла-клон) — `strokeDashoffset` (`getTotalLength`). Біла стрілка = `cloneNode` сірої лінії з прибраними `data-*` (щоб CSS-пунктир не діяв) + inline `stroke/strokeWidth/fill`. Кольори крапок/наконечника — `fromTo` із зафіксованим сірим (`getComputedStyle` на build) для коректного реверсу при `matchMedia`-перемиканні. `WHITE_END_GAP=5` — біла не пробиває кінчик наконечника.
+
+**Стан:** ✅ desktop/tablet (повна хореографія), mobile (спрощено — 1 стрілка/3 крапки: картки+крапки працюють, остання крапка сіра; **повна мобільна SVG-хореографія — окремою ітерацією**). Пройдено 2 раунди adversarial-рев'ю (console-сніпет + продакшн-модуль, 0 high). Підтверджено Romanом 29.05.2026.
 
 ---
 
