@@ -309,3 +309,29 @@
 
 ---
 
+### ADR-019: Секція is-working-process — STACK-CARDS з падінням активної (`section.wp`)
+
+**Рішення:** секція `is-working-process` — 3 картки (3 етапи), активна по центру, наступні в стеку. При скролі активна "падає" з поворотом, наступна стає на її місце. Інтегровано як `section.wp` (аналог `pv`/`oc`/`hswipe`). ✅ Усі брейкпоінти, 28.05.2026, `9931dd6`. **SVG-частина (нижня лінія + крапки + стрілки) — окремою ітерацією пізніше.**
+
+**Машина станів (`buildWorkingProcess(mode)`, `03-sections.js` блок 03g):** `maxState = cards.length − 1`. Стан `state = active` (індекс активної картки). При `apply(a, instant)` для кожної картки рахується `rank = i − a`: `<0` — впала, `0` — активна (центр), `≥1` — у стеку.
+
+**Параметри (адаптовано з old-коду `initBenefitsCardsAnimation`, після ітерацій з Roman):**
+- **Падіння активної** (`rank<0`): desktop — діагональ `xPercent:-50, yPercent:50, rotation:-10, opacity:0`; tablet/mobile — прямо вниз `xPercent:0, yPercent:100, rotation:-10, opacity:0`.
+- **Стек** (`rank≥1`): desktop — горизонтальний (`xPercent:50·rank, scale:1−0.15·rank` → 0.85/0.70); tablet/mobile — Z-stack рівно під активною (`xPercent:0, scale:1−0.05·rank` → 0.95/0.90).
+- **z-index фіксований по DOM:** 75/50/25 (ніколи не змінюється в `apply`).
+- **Overlay** `.kulbit-wp-overlay` (чорний `inset:0`, `pointer-events:none`, `z:10`) для затемнення стеку — `opacity: 0.4·rank` (rank=1 → 0.4; rank=2 → 0.8). Створюється у init, видаляється у `dispose`.
+- **Тривалість + ease:** `DUR_FALL = 0.9`, `DUR_SLIDE = 0.75` (slide трохи швидше за падіння — почуття "наступна стрімко зайняла місце, поки попередня ще летить"), ease `power1.inOut` на ВСІХ tween-ах (м'яка S-крива, синхронно).
+
+**Розстановка карток:** перша (`cards[0]`) лишається `position: relative` (центрована flex-wrapper-ом), `cards[1..]` переводимо в `absolute, top:0, left:50%, margin-left:-cardW/2` (центрування). Це не ламає Webflow Designer і центрує всі картки в одній позиції — стек на Z-осі без horizontal offset на старті.
+
+**API `section.wp` (як hswipe):**
+- `prepare()` / `enter()` — миттєво `apply(0, true)` (на наїзді + повному накритті — стартовий стек, без appearance-анімації).
+- `collapse()` — порожній (SVG-лінія з крапками сама за себе прогрес-бар, окремого fill немає).
+- `reset(toEnd)` — миттєвий стан `apply(toEnd ? maxState : 0, true)` для persistence/jump.
+- `dispose()` — `clearProps:'all'` на картках + ручний reset CSS-властивостей які JS виставив (`position/top/left/margin-left/z-index/transform-origin`) + видалення overlay.
+- `step(dir)` — `apply(state+dir)`; повертає `false` на межі → `advance` робить `goToSection`.
+
+**Ітерації узгодження параметрів (Roman, ~10 циклів):** спершу пробували вертикальний стек (вниз) → відкинуто; потім горизонтальний з активною зліва → відкинуто; зупинились на активній по центру (з-під неї стек справа на desktop, або Z-stack на tablet/mobile). Поворот: спершу `+14` → інша сторона `-14` → м'якший `-10`. Anticipation (відстрибнути вгору перед падінням) додавали через `back.in(1.7)` ease → Roman прибрав. Ease: `sine.inOut` → `power3.out` (різко) → `power2.out` → фінально `power1.inOut` (як в old-коді). DUR: 1.4 → асимметрія 0.9/0.75.
+
+---
+
