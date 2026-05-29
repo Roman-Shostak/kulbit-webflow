@@ -1,4 +1,4 @@
-/* Kulbit Webflow — зібрано 2026-05-29T09:19:16.120Z */
+/* Kulbit Webflow — зібрано 2026-05-29T10:44:39.031Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -942,6 +942,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const DUR_BLUE = 0.7, DUR_RED = 0.45, DUR_AWHITE = 0.6, DUR_GRAD = 0.6, DUR_DOTCOL = 0.3, DUR_CARDSWRAP = 0.5;
     const WHITE_END_GAP = 5;   // px: біла лінія не доходить до кінчика наконечника
     const REV_SPEED = 5;       // у скільки разів швидша зворотна анімація при виході з секції
+    const REVEAL_SPEED = 1.7;  // прискорення reveal-появи секції (перший етап) -- кроки карток не чіпає
     const WHITE10 = (getComputedStyle(sec).getPropertyValue('--colors--white-10') || '').trim() || '#fdfcfc';
 
     const maxState = cards.length - 1;
@@ -1073,7 +1074,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
         if (g.fill) gsap.set(g.fill, { autoAlpha: drawn ? 1 : 0 });
         if (g.head && greyHead) gsap.set(g.head, { fill: drawn ? WHITE10 : greyHead });
       });
-      dotRings.forEach((r) => { const n = +r.getAttribute('data-kulbit-svg-dot'); if (n < 3 || !greyStroke) return; gsap.set(r, { stroke: n <= s + 2 ? WHITE10 : greyStroke }); });
+      dotRings.forEach((r) => { const n = +r.getAttribute('data-kulbit-svg-dot'); if (n < 3 || n >= dotRings.length || !greyStroke) return; gsap.set(r, { stroke: n <= s + 2 ? WHITE10 : greyStroke }); }); // остання крапка (Traditional-кінець) лишається сірою
     };
     setStepSVGInstant(0);
 
@@ -1138,7 +1139,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       });
       // SVG синхронно: стрілка домальовується разом із карткою-в-центр (DUR_SLIDE)
       if (svg) {
-        const wc = whiteClones[arrowN], g = arrowGroup(arrowN), dotEl = dotByN(dotN);
+        const wc = whiteClones[arrowN], g = arrowGroup(arrowN), dotEl = (dotN < dotRings.length) ? dotByN(dotN) : null; // остання крапка лишається сірою
         if (dir > 0) {
           if (wc) stepTL.to(wc.el, { strokeDashoffset: WHITE_END_GAP, duration: DUR_SLIDE, ease: EASE }, 0);
           if (g.fill) stepTL.to(g.fill, { autoAlpha: 1, duration: DUR_SLIDE, ease: 'power1.out' }, 0);
@@ -1165,9 +1166,9 @@ console.log('[Kulbit] 03-sections.js завантажено');
         resetCardsToStart();
         setStepSVGInstant(0);
       },
-      enter() {                                     // повне накриття -> reveal вперед (блокуємо скрол на час)
+      enter() {                                     // повне накриття -> reveal вперед, прискорено (блокуємо скрол на час)
         app.isAnimating = true;
-        revealTL.timeScale(1).play();
+        revealTL.timeScale(REVEAL_SPEED).play();
       },
       collapse() { revealTL.timeScale(REV_SPEED).reverse(); },   // вихід угору -> швидкий реверс
       reset(toEnd) {                                // миттєвий стан (persistence/jump)
