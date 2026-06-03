@@ -354,3 +354,21 @@
 
 ---
 
+### ADR-020: Покроковий скрол футера на tablet/mobile (`section.ft`)
+
+**Проблема:** футер містить багато контенту і на вузьких девайсах ВИЩИЙ за екран (заміряно на iPhone 393px: контент ~1148px проти видимих ~695px → переповнення ~453px). Нативно скролити його НЕ можна: Observer слухає `wheel,touch` на `window` з `preventDefault:true` (ADR-008) → глушить будь-який нативний скрол, а жест іде в `advance()`. Оскільки футер не мав власного step-API, `advance(-1)` одразу робив `goToSection(prev)` — свайп «почитати футер» повертав на попередню секцію. `overflow:auto` на секції в принципі не спрацьовує.
+
+**Рішення:** футер стає покроковою секцією `section.ft` (аналог `wp`/`hswipe`/`pv`/`oc`) — контент зсувається ПОКРОКОВО трансформом (узгоджено з ADR-008/010, без нативного скролу, без ScrollToPlugin). Покроковий, а не вільний скрол — свідомо: збігається з відчуттям решти сайту (усе — снап-жести); Roman підтвердив що так навіть краще. ✅ Підтверджено на iPhone 03.06.2026, `869d9f3`.
+
+**Механізм (`buildFooterScroll(mode)`, `03-sections.js` блок 03h):**
+- **Монтується ЛИШЕ якщо переповнює:** на build тимчасово ставимо контейнеру `height:auto` + `justify-content:flex-start`, секції `height = видима`, міряємо `maxShift0 = footer.scrollHeight − footer.clientHeight`. Якщо `≤4px` — повертаємо штатний fill-лейаут і скрол НЕ монтуємо (короткі футери лишаються як були). **Desktop не викликається взагалі** (на низьких вікнах ноута дав би неочікуваний скрол — поза скоупом).
+- **Видима висота — з `#smooth-wrapper.clientHeight`, НЕ `100vh`.** На iOS `100vh` (секція = 735px) > видимої (695px) на висоту адресного бара — той самий патерн, що hero-відео (коментар `03-sections.js:204-212`). Тож `maxShift` точний і додатково компенсує iOS-обрізання знизу.
+- **`step(dir)`:** `dir>0` (донизу) — `pos += stepPx` до `maxShift`, повертає `true`; на самому низу `true` (зʼїдає жест, лишається). `dir<0` (вгору) — `pos -= stepPx`; на верху (`pos≤0`) повертає `false` → `advance` робить `goToSection(prev)`. `stepPx = 0.85·видимої` (`FT_STEP_RATIO`) — у footer-кейсі фактично 1 крок верх↔низ. Тривалість/ease — `config.stepDuration`/`ease`; `app.isAnimating` гейтить мульти-жести (один жест = один крок).
+- **`reset()`** — вхід у футер завжди з верху (`pos:0`); кличеться в `goToSection` (instant + наповзання dir>0). Футер — остання секція, тож входимо лише згори/instant.
+- **`recompute`** на `visualViewport`+`window` resize (адресний бар iOS / поворот) — перемірює `maxShift`/`stepPx`, клампить `pos`.
+- **`dispose`** (у `teardownHero` при зміні брейкпоінта) — знімає слухачі, повертає вихідні inline-стилі контейнера/секції (`height`/`overflow`/`transform`).
+
+**Інтеграція:** `advance` — гілка `section.isFooter && section.ft` (між `wp` та desktop-таймлайном); `goToSection` — `ft.reset()` в instant- та dir>0-блоках; `matchMedia` — `buildFooterScroll` у tablet+mobile гілках (перед `restoreSection`, щоб persistence-відновлення у футер мало готовий `ft`); `teardownHero` — `ft.dispose()`. У Webflow змін НЕ потрібно (JS самодостатній; `overflow:auto` на `.section.footer` ≤479 можна прибрати як зайвий). Тунабельне: `FT_STEP_RATIO`, поріг переповнення (4px).
+
+---
+
