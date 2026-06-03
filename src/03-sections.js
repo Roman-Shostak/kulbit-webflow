@@ -35,7 +35,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
         timeline: null, isAnimated: false,  // кастомний таймлайн desktop (ADR-009)
         tabletTL: null, isTabletHero: false, // спец таблет-hero (ADR-011)
         oc: null, isOurClients: false,       // спец секція is-our-clients (ADR-013)
-        pv: null, isProjects: false          // спец секція is-projects: свап відео (ADR-015)
+        pv: null, isProjects: false,         // спец секція is-projects: свап відео (ADR-015)
+        ft: null                             // спец секція footer: покроковий скрол (ADR-020)
       };
     });
 
@@ -90,6 +91,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildProjects('tablet');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
       app.buildHSwipe('tablet');                         // is-our-services: горизонтальний свап карток
       app.buildWorkingProcess('tablet');                 // is-working-process: stack-cards (Z-stack)
+      app.buildFooterScroll('tablet');                   // footer: покроковий скрол якщо переповнює (ADR-020)
       app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
     });
@@ -100,6 +102,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildProjects('mobile');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
       app.buildHSwipe('mobile');                         // is-our-services: горизонтальний свап карток
       app.buildWorkingProcess('mobile');                 // is-working-process: stack-cards (Z-stack)
+      app.buildFooterScroll('mobile');                   // footer: покроковий скрол якщо переповнює (ADR-020)
       app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
     });
@@ -132,6 +135,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
       s.hswipe = null; s.isHSwipe = false;
       if (s.wp && s.wp.dispose) s.wp.dispose();             // прибрати свап-стан is-working-process
       s.wp = null; s.isWP = false;
+      if (s.ft && s.ft.dispose) s.ft.dispose();             // footer-скрол: зняти слухачі + повернути вихідний лейаут
+      s.ft = null;
     });
     console.log('[Kulbit-Anim] teardown hero (зміна брейкпоінта)');
   };
@@ -1073,6 +1078,97 @@ console.log('[Kulbit] 03-sections.js завантажено');
     return tl;
   };
 
+  // 03h — Footer-scroll (section.ft, ADR-020): на вузьких девайсах футер ВИЩИЙ за екран, а
+  //   нативно скролити не можна (Observer глушить скрол через preventDefault). Тож зсуваємо
+  //   контент ПОКРОКОВО трансформом — як wp/hswipe: жест донизу зсуває внутрішній контейнер
+  //   угору (відкриває низ), на верхній межі step повертає false → керування йде рушію
+  //   (goToSection попередньої секції). Монтуємо ЛИШЕ якщо контент реально переповнює видиму
+  //   висоту; інакше футер лишається штатним (fill-100vh). Видиму висоту беремо з #smooth-wrapper
+  //   (НЕ 100vh: на iOS адресний бар робить 100vh > видимої), тож скрол точний на будь-якому девайсі.
+  const FT_STEP_RATIO = 0.85; // частка видимої висоти за один жест (тунабельно)
+  app.buildFooterScroll = (mode) => {
+    const footer = app.sections.find((s) => s.isFooter);
+    if (!footer) return;
+    const container = footer.el.querySelector('.container.is-footer');
+    if (!container) { console.warn('[Kulbit-Footer] немає .container.is-footer'); return; }
+
+    const visH = () => (app.wrapper ? app.wrapper.clientHeight : window.innerHeight);
+
+    // Вихідні стилі (повертаємо у dispose при зміні брейкпоінта)
+    const savedContainer = container.getAttribute('style') || '';
+    const savedFooterH = footer.el.style.height;          // що поставив setupStacking ('100vh')
+    const savedFooterOverflow = footer.el.style.overflow;
+
+    // 01 — Контент натуральної висоти + кліп-вікно = видима зона → міряємо переповнення
+    container.style.height = 'auto';
+    container.style.justifyContent = 'flex-start';
+    footer.el.style.height = visH() + 'px';
+    const maxShift0 = Math.max(0, footer.el.scrollHeight - footer.el.clientHeight);
+
+    // 02 — Не переповнює → повертаємо штатний fill-лейаут, скрол не монтуємо
+    if (maxShift0 <= 4) {
+      container.setAttribute('style', savedContainer);
+      footer.el.style.height = savedFooterH;
+      console.log('[Kulbit-Footer] ' + mode + ': футер влазить — скрол не потрібен');
+      return;
+    }
+
+    // 03 — Переповнює → лишаємо кліп-вікно (видима висота), монтуємо покроковий скрол
+    container.style.willChange = 'transform';
+    footer.el.style.overflow = 'hidden';
+
+    let pos = 0, maxShift = 0, stepPx = 0, onVV = null;
+
+    const recompute = () => {
+      footer.el.style.height = visH() + 'px';
+      maxShift = Math.max(0, footer.el.scrollHeight - footer.el.clientHeight);
+      stepPx = Math.round(visH() * FT_STEP_RATIO);
+      pos = Math.min(pos, maxShift);
+      gsap.set(container, { y: -pos });
+    };
+    recompute();
+
+    footer.ft = {
+      // Один жест = один крок зсуву. true → жест оброблено; false → межа, керування рушію.
+      step(dir) {
+        if (maxShift <= 0) return false;             // влізло (напр. після повороту) → звичайна секція
+        if (dir > 0) {
+          if (pos >= maxShift) return true;          // вже внизу → зʼїдаємо жест, лишаємось у футері
+          pos = Math.min(pos + stepPx, maxShift);
+        } else {
+          if (pos <= 0) return false;                // вгорі → віддаємо керування → goToSection попередньої
+          pos = Math.max(pos - stepPx, 0);
+        }
+        app.isAnimating = true;
+        gsap.to(container, {
+          y: -pos, duration: app.config.stepDuration, ease: app.config.ease,
+          onComplete: () => { app.isAnimating = false; }
+        });
+        console.log('[Kulbit-Footer] крок dir', dir, '→ pos', pos, '/', maxShift);
+        return true;
+      },
+      reset() { pos = 0; recompute(); gsap.set(container, { y: 0 }); }, // вхід у футер — завжди з верху
+      recompute,
+      dispose() {
+        if (onVV) {
+          if (window.visualViewport) window.visualViewport.removeEventListener('resize', onVV);
+          window.removeEventListener('resize', onVV);
+        }
+        gsap.set(container, { y: 0 });
+        container.setAttribute('style', savedContainer);
+        footer.el.style.height = savedFooterH;
+        footer.el.style.overflow = savedFooterOverflow;
+      }
+    };
+
+    // 04 — Перерахунок при зміні видимої висоти (адресний бар iOS / ресайз) — як hero-відео
+    onVV = () => { if (footer.ft) footer.ft.recompute(); };
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onVV);
+    window.addEventListener('resize', onVV);
+
+    console.log('[Kulbit-Footer] ' + mode + ': скрол змонтовано — maxShift', maxShift, 'крок', stepPx);
+  };
+
   // — Стекінг-лейаут (ADR-010): секції абсолютом одна над одною, z-index за індексом.
   //   JS застосовує це в РАНТАЙМІ — у Webflow секції лишаються relative (зручно редагувати).
   app.setupStacking = () => {
@@ -1168,6 +1264,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (target.isProjects && target.pv) target.pv.reset(dir < 0);   // миттєвий стан свапу відео
       if (target.isHSwipe && target.hswipe) target.hswipe.reset(dir < 0); // миттєвий стан горизонт. свапу
       if (target.isWP && target.wp) target.wp.reset(dir < 0);         // миттєвий стан wp-карток
+      if (target.isFooter && target.ft) target.ft.reset();            // футер — завжди з верху
       if (app.updateVideoVisibility) app.updateVideoVisibility();
       return;
     }
@@ -1191,6 +1288,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (target.isProjects && target.pv) target.pv.prepare();   // is-projects: приховано до появи (лінія 0)
       if (target.isHSwipe && target.hswipe) target.hswipe.prepare(); // is-our-services: картки приховано
       if (target.isWP && target.wp) target.wp.prepare();            // is-working-process: миттєво стартовий стек
+      if (target.isFooter && target.ft) target.ft.reset();          // футер наповзає з верху (pos 0)
       gsap.to(target.el, {
         yPercent: 0,
         duration: app.config.scrollDuration, ease: app.config.ease,
@@ -1282,6 +1380,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (section.isWP && section.wp) {
       if (section.wp.step(dir)) return;                       // крок карток оброблено
       app.goToSection(app.currentSectionIndex + dir, false, dir); // межа → сусідня секція
+      return;
+    }
+
+    // footer: покроковий скрол якщо переповнює (ADR-020); на верхній межі — перехід угору
+    if (section.isFooter && section.ft) {
+      if (section.ft.step(dir)) return;                       // крок скролу оброблено
+      app.goToSection(app.currentSectionIndex + dir, false, dir); // верх футера → попередня секція
       return;
     }
 
