@@ -242,10 +242,12 @@ kulbit-webflow/
 │   ├── 08-video.js              # Vimeo bg-відео (cover) + кнопка звуку ([data-kulbit-video]/[data-kulbit-sound])
 │   ├── 09-button-border.js      # Ховер: промальовка бордера від точки курсора ([data-kulbit-border])
 │   ├── 10-project-video.js      # Vimeo-плеєр проєктів: cover + кастомні контроли ([data-kulbit-project-video], ADR-014)
-│   └── 11-scramble.js           # Скрамбл-поява тексту за атрибутом [data-kulbit-scramble] (ADR-017)
+│   ├── 11-scramble.js           # Скрамбл-поява тексту за атрибутом [data-kulbit-scramble] (ADR-017)
+│   └── 12-hero-vh.js            # Фікс висоти .section.is-hero через visualViewport (був інлайн у Webflow)
 │
-└── dist/                        # Збірка для Webflow (генерується)
-    └── kulbit-main.js           # Склеєний файл — підключається в Webflow
+└── dist/                        # Збірка для Webflow (генерується) — ДВІ версії
+    ├── kulbit-main.js           # DEV (логи) — staging/тести
+    └── kulbit-main.min.js       # PROD (0 console) — продакшн
 ```
 
 ### Принципи модульності
