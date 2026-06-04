@@ -1,9 +1,12 @@
 // ====================================================================
-// build.js — Простий скрипт збірки src/* → dist/kulbit-main.js
-// Запуск: node build.js
-// dist — ПРОДАКШН-бандл: коментарі та console.* зачищаються (src лишається
-//        документованим, CLAUDE.md §7). Стрипер — токенайзер без залежностей:
-//        коректно розрізняє рядки / шаблони / regex / коментарі.
+// build.js — Збірка src/* → ДВІ версії в dist/ (CLAUDE.md §9):
+//   • kulbit-main.js      — DEV  (коментарі + console.* збережено) — розробка/тести/staging
+//   • kulbit-main.min.js  — PROD (коментарі + console.* зачищено)  — продакшн
+// Запуск: node build.js         → будує ОБИДВІ версії
+//         node build.js --dev   → лише DEV
+//         node build.js --prod  → лише PROD
+// Прод-стрипер — токенайзер без залежностей (коректно розрізняє рядки/шаблони/regex/коментарі).
+// src/ ЗАВЖДИ лишається документованим (укр-коментарі+логи, §7/§8) — зачистка лише у прод-файлі.
 // ====================================================================
 
 const fs = require('fs');
@@ -11,7 +14,8 @@ const path = require('path');
 
 const SRC_DIR = './src';
 const DIST_DIR = './dist';
-const DIST_FILE = path.join(DIST_DIR, 'kulbit-main.js');
+const DEV_FILE = path.join(DIST_DIR, 'kulbit-main.js');
+const PROD_FILE = path.join(DIST_DIR, 'kulbit-main.min.js');
 
 console.log('[Build] === Старт збірки Kulbit ===');
 
@@ -102,47 +106,53 @@ const files = fs.readdirSync(SRC_DIR).filter((f) => f.endsWith('.js')).sort();
 if (files.length === 0) { console.error('[Build] ❌ Немає файлів у src/'); process.exit(1); }
 console.log(`[Build] Знайдено файлів: ${files.length}`);
 
-// Прапорець: --prod -> чистий прод-бандл (без коментарів/console); без прапорця -> dev (з логами)
-const PROD = process.argv.includes('--prod');
+// Прапорці: за замовчуванням будуємо ОБИДВІ версії; --dev / --prod → лише одну
+const onlyDev = process.argv.includes('--dev');
+const onlyProd = process.argv.includes('--prod');
+const doDev = !onlyProd;
+const doProd = !onlyDev;
 
-// Склеюємо сирий код
+// Склеюємо сирий код (один раз)
 const raw = files
   .map((file) => { console.log(`[Build] + ${file}`); return fs.readFileSync(path.join(SRC_DIR, file), 'utf8'); })
   .join('\n\n');
 
-// Прод-режим: зачистити коментарі+console; dev-режим: лишити як є (для тестування)
-const output = PROD
-  ? stripForProd(raw)
-      .replace(/[ \t]+$/gm, '')   // трейлінг-пробіли
-      .replace(/\n{3,}/g, '\n\n') // 3+ порожніх рядки → 1
-      .replace(/^\s+\n/, '')      // зайвий старт
-  : raw;
-
-// Перевірка синтаксису — НЕ перезаписуємо dist, якщо щось зламано
-try {
-  new Function(output);
-} catch (e) {
-  console.error('[Build] ❌ Синтаксична помилка у бандлі:', e.message);
-  console.error('[Build] dist НЕ оновлено.' + (PROD ? ' Перевір токенайзер у build.js.' : ''));
-  process.exit(1);
-}
-
-const timestamp = new Date().toISOString();
-const banner = PROD
-  ? `/* Kulbit Webflow — production bundle — ${timestamp} */\n`
-  : `/* Kulbit Webflow — dev build (з логами) — ${timestamp} */\n\n`;
-
-if (!fs.existsSync(DIST_DIR)) fs.mkdirSync(DIST_DIR);
-fs.writeFileSync(DIST_FILE, banner + output);
-
-// Статистика
 const rawKB = (Buffer.byteLength(raw, 'utf8') / 1024).toFixed(2);
-const outKB = (fs.statSync(DIST_FILE).size / 1024).toFixed(2);
-console.log(`[Build] ✅ Готово (${PROD ? 'PROD' : 'DEV'}): ${DIST_FILE}`);
-console.log(`[Build] Розмір: ${outKB} KB${PROD ? ` (сирий src ${rawKB} KB)` : ''}`);
-if (PROD) {
-  const consoleLeft = (output.match(/console\.(log|warn|error|info|debug)\s*\(/g) || []).length;
-  console.log(`[Build] console.* у бандлі: ${consoleLeft} (має бути 0)`);
-} else {
-  console.log('[Build] DEV: коментарі+console збережено. Прод-бандл: node build.js --prod');
+const timestamp = new Date().toISOString();
+if (!fs.existsSync(DIST_DIR)) fs.mkdirSync(DIST_DIR);
+
+// ── Зібрати, перевірити синтаксис і записати одну версію (prod=true → зачистка)
+function writeBundle(prod) {
+  const output = prod
+    ? stripForProd(raw)
+        .replace(/[ \t]+$/gm, '')   // трейлінг-пробіли
+        .replace(/\n{3,}/g, '\n\n') // 3+ порожніх рядки → 1
+        .replace(/^\s+\n/, '')      // зайвий старт
+    : raw;
+
+  // Перевірка синтаксису — НЕ записуємо файл, якщо щось зламано
+  try {
+    new Function(output);
+  } catch (e) {
+    console.error(`[Build] ❌ Синтаксична помилка (${prod ? 'PROD' : 'DEV'}):`, e.message);
+    console.error('[Build] Файл НЕ оновлено.' + (prod ? ' Перевір токенайзер у build.js.' : ''));
+    process.exit(1);
+  }
+
+  const banner = prod
+    ? `/* Kulbit Webflow — production bundle — ${timestamp} */\n`
+    : `/* Kulbit Webflow — dev build (з логами) — ${timestamp} */\n\n`;
+  const file = prod ? PROD_FILE : DEV_FILE;
+  fs.writeFileSync(file, banner + output);
+
+  const outKB = (fs.statSync(file).size / 1024).toFixed(2);
+  console.log(`[Build] ✅ ${prod ? 'PROD' : 'DEV '} → ${file}  (${outKB} KB)`);
+  if (prod) {
+    const consoleLeft = (output.match(/console\.(log|warn|error|info|debug)\s*\(/g) || []).length;
+    console.log(`[Build]      console.* у прод-бандлі: ${consoleLeft} (має бути 0)`);
+  }
 }
+
+if (doDev) writeBundle(false);
+if (doProd) writeBundle(true);
+console.log(`[Build] === Готово (сирий src ${rawKB} KB) ===`);

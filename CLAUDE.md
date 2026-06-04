@@ -372,21 +372,23 @@ window.KulbitApp = {};
 
 ```bash
 # 1. Редагуєш файли у src/ через Cursor/VS Code
-# 2. Запускаєш збірку:
-node build.js          # DEV-бандл: коментарі + console.* збережено (для розробки/тестування)
-node build.js --prod   # ПРОД-бандл: коментарі + console.* зачищено (~78 KB зі 145), для деплою
+# 2. Запускаєш збірку (ОДИН запуск будує ОБИДВІ версії):
+node build.js          # → dist/kulbit-main.js (DEV, логи) + dist/kulbit-main.min.js (PROD, чистий)
+node build.js --dev    # лише DEV  (kulbit-main.js)
+node build.js --prod   # лише PROD (kulbit-main.min.js)
 
-# 3. Перевіряєш dist/kulbit-main.js — має бути склеєне (build.js перевіряє синтаксис перед записом)
-# 4. Комітиш і пушиш:
+# 3. Перевіряєш dist/ — обидва файли склеєні (build.js перевіряє синтаксис кожного перед записом)
+# 4. Комітиш і пушиш (ОБИДВА файли — у репо):
 git add .
 git commit -m "feat: опис зміни"
 git push
 ```
 
-> **Збірка (`build.js`):** конкатенація `src/01..11` + опційна прод-зачистка. `src/` ЗАВЖДИ лишається з
-> українськими коментарями та `console.*` (CLAUDE.md §7/§8). Зачистка — лише у прод-бандлі через `--prod`
-> (токенайзер-стрипер без залежностей: коректно розрізняє рядки/шаблони/regex/коментарі; `console` усередині
-> виразу → `void 0`). Під час розробки нових секцій тримай DEV-бандл (логи для дебагу); перед деплоєм — `--prod`.
+> **Збірка (`build.js`):** конкатенація `src/01..11` → **дві версії одночасно** (CLAUDE.md рішення 04.06.2026):
+> `kulbit-main.js` (DEV, з логами+коментарями — staging/тести) і `kulbit-main.min.js` (PROD, зачищено — продакшн).
+> `src/` ЗАВЖДИ лишається з українськими коментарями та `console.*` (§7/§8). Зачистка (коментарі+`console`) — лише
+> у `.min.js` (токенайзер-стрипер без залежностей: рядки/шаблони/regex/коментарі; `console` усередині виразу → `void 0`).
+> **Staging/тести → `kulbit-main.js`; продакшн → `kulbit-main.min.js`.** Обидва коміляться (актуальні завжди).
 
 ### Cache-bust для jsDelivr
 
@@ -504,9 +506,13 @@ chore: оновив build.js
 - [ ] **Крок 9:** попап-форма (`07-popup-form.js`)
 - [ ] **Крок 10:** фінальний поліш; **Крок 11:** клієнтське демо; **Крок 12:** продакшн-домен
 
-### 🔖 Точка відновлення (03.06.2026 — футер-скрол `section.ft` (ADR-020))
+### 🔖 Точка відновлення (04.06.2026 — is-traditional-production (ADR-021) + dual-build + аудит)
 
-**Поточний стан = `869d9f3` (HEAD).** `869d9f3` додав покроковий скрол футера (`section.ft`, ADR-020); код секцій до того — на `0d35cbf`. Hero + is-our-clients + is-our-services (ADR-018) + is-projects (усі девайси) + контролі відео + персистентність + стійкість до повороту + кнопки-автопрогравання + scramble за атрибутом + **is-working-process ПОВНІСТЮ (ADR-019 + SVG-ітерація)** + **футер: покроковий скрол на tablet/mobile коли переповнює (ADR-020)** — **усе підтверджене Romanом** (desktop + iPhone Safari). **Білд: `node build.js` = DEV (логи+коментарі), `node build.js --prod` = чистий прод (0 console).** Commit-pinned: `@869d9f3` (DEV із логами; ⚠️ ПЕРЕД деплоєм зробити `--prod` і перекомітити).
+**Стан:** Hero + is-our-clients + is-our-services (ADR-018) + is-projects (усі девайси) + is-working-process (ADR-019) + футер-скрол (ADR-020) + **is-traditional-production ПОВНІСТЮ (ADR-021): радар red/blue, вікно карток pageSize 4/2, 3-тя група без SVG, скрамбл-перепис заголовка** (`a8a73b7`) + **якірні переходи = сталий стрибок** (`config.anchorDuration`, не прогортування) — **усе підтверджене Romanом** (desktop+tablet+mobile). Хронологія tp: `1b53eb0` (desktop) → `a8a73b7` (tablet/mobile+заголовок+anchor).
+
+**Білд — ДВІ версії одночасно (рішення 04.06.2026):** `node build.js` → `dist/kulbit-main.js` (DEV, логи — staging/тести) + `dist/kulbit-main.min.js` (PROD, 0 console — продакшн). `--dev`/`--prod` — лише одну. **Staging → `kulbit-main.js`; продакшн → `kulbit-main.min.js`.** Обидва коміляться.
+
+**Аудит коду (04.06.2026, Workflow 7 агентів + adversarial-verify):** код визнано в доброму стані; застосовано лише 2 безпечні зміни — (1) `try/catch` навколо `registerAnimations` в `init` (помилка білду секції більше не вбиває Observer — урок регресії), (2) ScrambleTextPlugin-фолбек у oc `morphParagraph`. Ризиковані «скорочення» (крос-модульні дедуплікації scramble/mask/progress-fill-утиліт, section-API registry для advance/goToSection) — НЕ застосовано (зачепили б підтверджені секції); кандидати на майбутнє, по одному з тестом.
 
 **Патерн для НОВИХ секцій:** покрокова секція інтегрується як `section.<name>` (аналог `oc`/`pv`/`hswipe`/`wp`) з API `{ prepare, enter, collapse, reset, dispose, step }`, делегується в `advance`/`goToSection`/`teardownHero`/`matchMedia`. Заголовки — атрибут `data-kulbit-scramble`. Прогрес-бар — `.section-progresbar` + дочірня `.<x>-fill` (АБО, як у `wp` — без бара, бо SVG-лінія сама за себе). Геометрію завжди МІРЯТИ в консолі перед кодом ([[hswipe-section-pattern]]).
 

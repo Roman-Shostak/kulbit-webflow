@@ -118,7 +118,13 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     app.registerSections();   // визначено у 03-sections.js
     app.setupStacking();      // стекінг-лейаут: секції абсолютом одна над одною (ADR-010)
     app.registerSteps();      // reveal-кроки [data-kulbit-step]
-    app.registerAnimations(); // кастомні таймлайни секцій (ADR-009; тільки desktop)
+    // ВАЖЛИВО: помилка білду будь-якої секції (matchMedia/build*) НЕ має вбивати Observer — інакше
+    //   зникає скрол на всьому сайті (урок регресії, CLAUDE.md §9). Тож обгортаємо в try/catch.
+    try {
+      app.registerAnimations(); // кастомні таймлайни/секції (ADR-009/012; усі брейкпоінти)
+    } catch (e) {
+      console.error('[Kulbit-Core] ❌ помилка registerAnimations (білд секції) — Observer усе одно стартує:', e);
+    }
     app.setupObserver();
     window.addEventListener('resize', app.handleResize);
     console.log('[Kulbit-Core] ✅ KulbitApp ініціалізовано');
