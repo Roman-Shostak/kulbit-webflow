@@ -81,6 +81,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildProjects('desktop');                      // is-projects: свап відео (ADR-015, поки лише desktop)
       app.buildHSwipe('desktop');                        // is-our-services: горизонтальний свап карток
       app.buildWorkingProcess('desktop');                // is-working-process: stack-cards (десktop - горизонт.)
+      app.buildTraditional('desktop');                   // is-traditional-production: радар red/blue + картки (поки лише desktop)
       app.restoreSection();                              // персистентність: відновити позицію (reload/перебудова)
       return () => app.teardownHero();
     });
@@ -137,6 +138,8 @@ console.log('[Kulbit] 03-sections.js завантажено');
       s.wp = null; s.isWP = false;
       if (s.ft && s.ft.dispose) s.ft.dispose();             // footer-скрол: зняти слухачі + повернути вихідний лейаут
       s.ft = null;
+      if (s.tp && s.tp.dispose) s.tp.dispose();             // traditional-production: прибрати маски/інжекти/display
+      s.tp = null; s.isTraditional = false;
     });
     console.log('[Kulbit-Anim] teardown hero (зміна брейкпоінта)');
   };
@@ -1169,6 +1172,267 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-Footer] ' + mode + ': скрол змонтовано — maxShift', maxShift, 'крок', stepPx);
   };
 
+  // 03i — Traditional Production (section.tp, ADR-021, поки DESKTOP): радар-порівняння
+  //   Traditional(red)/KULBIT(blue) — два пʼятикутники (накладені) + дві групи по 4 картки.
+  //   Червона фаза (1-4): поява left/right (+ авто крок1) → картки виїжджають, зʼявляються крапки,
+  //     card-progres наповнюється до % (data-kulbit-progress); крок4 — картка+лінія+градієнт одночасно.
+  //   Перехід (4→5): червоні картки 4>3>2>1 каскадом зникають (display:none → 5-та до верху),
+  //     червоний svg гасне (градієнт геть + крапки[крім центру]/лінія → black-30).
+  //   Синя фаза (5-8): дзеркало червоної на синьому svg (на старті синій ВЗАГАЛІ прихований).
+  //   Пунктир «малюється» клон-маскою + dashoffset (як біла стрілка WP). Tablet/mobile — наступним кроком.
+  app.buildTraditional = (mode) => {
+    if (mode !== 'desktop') return; // поки фіксуємо лише desktop
+    const section = app.sections.find((s) => s.el.classList.contains('is-traditional-production'));
+    if (!section) return;
+    const el = section.el;
+
+    const left = el.querySelector('.traditional-production-left');
+    const right = el.querySelector('.traditional-production-right');
+    const bar = el.querySelector('.section-progresbar');
+    const allCards = [...el.querySelectorAll('.traditional-production-card')];
+    const cardDots = [['1'], ['2'], ['3-1', '3-2'], ['4']];   // локальна картка i → крапка(и)
+    const DEMO_PCT = [40, 65, 55, 85];                         // запасні %, поки нема data-kulbit-progress
+
+    const STEP = app.config.stepDuration, SCROLL = app.config.scrollDuration, EASE = app.config.ease;
+    const LINE_TOTAL = 0.85, CAS = STEP * 0.5, CAS_STAG = 0.12, maxState = 8;
+    let state = 0;
+
+    const cssVar = (n, fb) => { const v = getComputedStyle(el).getPropertyValue(n).trim(); return v || fb; };
+    const WHITE = cssVar('--colors--white', 'white');
+    const BLACK30 = cssVar('--colors--black-30', '#252525');
+
+    // Маска «малювання» пунктирного сегмента (солід-клон + dashoffset)
+    const NS = 'http://www.w3.org/2000/svg';
+    const ensureMask = (svg, edge, idx, key) => {
+      if (edge.__tpMask) return edge.__tpMask;
+      let defs = svg.querySelector('defs');
+      if (!defs) { defs = document.createElementNS(NS, 'defs'); svg.appendChild(defs); }
+      const vb = (svg.getAttribute('viewBox') || '0 0 489 412').split(/\s+/).map(Number);
+      const mask = document.createElementNS(NS, 'mask');
+      mask.id = 'tp-' + key + '-mask-' + idx;
+      mask.setAttribute('maskUnits', 'userSpaceOnUse');
+      mask.setAttribute('x', vb[0]); mask.setAttribute('y', vb[1]);
+      mask.setAttribute('width', vb[2]); mask.setAttribute('height', vb[3]);
+      const clone = edge.cloneNode(false);
+      [...clone.attributes].forEach((a) => { if (a.name.indexOf('data-') === 0) clone.removeAttribute(a.name); });
+      clone.setAttribute('stroke', 'white'); clone.setAttribute('stroke-width', '6'); clone.setAttribute('fill', 'none');
+      const L = edge.getTotalLength();
+      clone.setAttribute('stroke-dasharray', L); clone.setAttribute('stroke-dashoffset', L);
+      mask.appendChild(clone); defs.appendChild(mask);
+      edge.setAttribute('mask', 'url(#tp-' + key + '-mask-' + idx + ')');
+      edge.__tpMask = { clone, L };
+      return edge.__tpMask;
+    };
+
+    // Збірка групи (svg + 4 картки)
+    const injectFill = (p) => {
+      p.style.position = 'relative'; p.style.overflow = 'hidden';
+      let f = p.querySelector('.tp-card-fill');
+      if (!f) { f = document.createElement('div'); f.className = 'tp-card-fill'; p.appendChild(f); }
+      Object.assign(f.style, { position: 'absolute', left: '0', top: '0', height: '100%', width: '0%', backgroundColor: 'var(--colors--white-10)' });
+      return f;
+    };
+    const buildGroup = (sel, cardEls, key) => {
+      const svg = el.querySelector(sel);
+      if (!svg) { console.warn('[Kulbit-TP] немає svg:', sel); return null; }
+      const dot = (n) => svg.querySelector('[data-kulbit-svg-dot="' + n + '"]');
+      const center = svg.querySelector('[data-kulbit-svg-center]');
+      const edges = [1, 2, 3, 4, 5].map((n) => svg.querySelector('[data-kulbit-svg-edge="' + n + '"]'));
+      const gradFill = svg.querySelector('[data-kulbit-svg-fill]');
+      edges.forEach((e, i) => e && ensureMask(svg, e, i, key));
+      const totalLen = edges.reduce((s, e) => s + (e && e.__tpMask ? e.__tpMask.L : 0), 0) || 1;
+      const progFills = cardEls.map((c) => { const p = c.querySelector('.traditional-product-card-progres'); return p ? injectFill(p) : null; });
+      return { svg, key, cards: cardEls, dot, center, edges, gradFill, totalLen, progFills };
+    };
+    const red = buildGroup('.traditional-production-svg:not(.is-blue) svg', allCards.slice(0, 4), 'red');
+    const blue = buildGroup('.traditional-production-svg.is-blue svg', allCards.slice(4, 8), 'blue');
+    if (!red || !blue) { console.warn('[Kulbit-TP] немає red/blue групи — пропускаємо'); return; }
+
+    // Прогрес-бар секції (трек + дочірня лінія, як oc/hswipe)
+    let secFill = null;
+    if (bar) {
+      bar.style.position = 'relative'; bar.style.backgroundColor = 'rgba(253, 252, 252, 0.15)';
+      secFill = bar.querySelector('.tp-fill') || document.createElement('div');
+      if (!secFill.parentNode) { secFill.className = 'tp-fill'; bar.appendChild(secFill); }
+      Object.assign(secFill.style, { position: 'absolute', left: '0', top: '0', height: '100%', width: '0%', backgroundColor: 'var(--colors--white-10)' });
+    }
+
+    const pctOf = (g, li) => {
+      const p = g.cards[li] && g.cards[li].querySelector('.traditional-product-card-progres');
+      const a = p && p.getAttribute('data-kulbit-progress');
+      const n = a != null ? parseFloat(a) : NaN;
+      return isNaN(n) ? DEMO_PCT[li] : Math.max(0, Math.min(100, n));
+    };
+    const edgeDur = (g, L) => Math.max(0.04, (L / g.totalLen) * LINE_TOTAL);
+    const setSec = (tl, s, at) => { if (secFill) tl.to(secFill, { width: (s / maxState * 100) + '%', duration: STEP, ease: EASE }, at); };
+
+    // Будівельні блоки таймлайну (gState = глобальний стан для прогрес-бара)
+    const addCard = (tl, g, li, gState) => {
+      const at = tl.duration();
+      tl.fromTo(g.cards[li], { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, duration: STEP, ease: EASE }, at);
+      cardDots[li].forEach((n) => { const d = g.dot(n); if (d) tl.to(d, { autoAlpha: 1, duration: STEP, ease: EASE }, at); });
+      if (g.progFills[li]) tl.to(g.progFills[li], { width: pctOf(g, li) + '%', duration: STEP, ease: EASE }, at); // наповнення з початку появи
+      setSec(tl, gState, at);
+    };
+    const addFinal = (tl, g, gState) => { // картка 4 + лінія ОДНОЧАСНО → градієнт
+      const li = 3, at = tl.duration();
+      tl.fromTo(g.cards[li], { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, duration: STEP, ease: EASE }, at);
+      cardDots[li].forEach((n) => { const d = g.dot(n); if (d) tl.to(d, { autoAlpha: 1, duration: STEP, ease: EASE }, at); });
+      if (g.progFills[li]) tl.to(g.progFills[li], { width: pctOf(g, li) + '%', duration: STEP, ease: EASE }, at);
+      setSec(tl, gState, at);
+      let lat = at;
+      g.edges.forEach((e, idx) => { const m = ensureMask(g.svg, e, idx, g.key); const dur = edgeDur(g, m.L); tl.fromTo(m.clone, { attr: { 'stroke-dashoffset': m.L } }, { attr: { 'stroke-dashoffset': 0 }, duration: dur, ease: 'none' }, lat); lat += dur; });
+      tl.to(g.gradFill, { autoAlpha: 1, duration: STEP, ease: EASE }, lat);
+    };
+    const removeCard = (tl, g, li, gAfter) => {
+      const at = tl.duration();
+      if (g.progFills[li]) tl.to(g.progFills[li], { width: '0%', duration: STEP * 0.5, ease: EASE }, at);
+      cardDots[li].forEach((n) => { const d = g.dot(n); if (d) tl.to(d, { autoAlpha: 0, duration: STEP * 0.6, ease: EASE }, at); });
+      tl.to(g.cards[li], { autoAlpha: 0, y: 40, duration: STEP, ease: EASE }, at);
+      setSec(tl, gAfter, at);
+    };
+    const removeFinal = (tl, g, gAfter) => { // картка 4 + лінія ОДНОЧАСНО геть
+      const li = 3, at0 = tl.duration();
+      tl.to(g.gradFill, { autoAlpha: 0, duration: STEP * 0.4, ease: EASE }, at0);
+      let lat = at0;
+      g.edges.slice().reverse().forEach((e) => { const m = e.__tpMask; if (!m) return; const dur = edgeDur(g, m.L); tl.to(m.clone, { attr: { 'stroke-dashoffset': m.L }, duration: dur, ease: 'none' }, lat); lat += dur; });
+      if (g.progFills[li]) tl.to(g.progFills[li], { width: '0%', duration: STEP * 0.5, ease: EASE }, at0);
+      cardDots[li].forEach((n) => { const d = g.dot(n); if (d) tl.to(d, { autoAlpha: 0, duration: STEP * 0.6, ease: EASE }, at0); });
+      tl.to(g.cards[li], { autoAlpha: 0, y: 40, duration: STEP, ease: EASE }, at0);
+      setSec(tl, gAfter, at0);
+    };
+
+    // Кожна фаза тримає в ПОТОЦІ лише свої 4 картки → перша картка фази притиснута до верху
+    const setPhaseDisplay = (bluePhase) => {
+      red.cards.forEach((c) => { c.style.display = bluePhase ? 'none' : ''; });
+      blue.cards.forEach((c) => { c.style.display = bluePhase ? '' : 'none'; });
+    };
+    const tintRed = (tl, color, at) => { // кольори червоного svg (крапки[крім центру] + лінія)
+      ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = red.dot(n); if (d) tl.to(d, { fill: color, duration: STEP, ease: EASE }, at); });
+      red.edges.forEach((e) => tl.to(e, { stroke: color, duration: STEP, ease: EASE }, at));
+    };
+    const transitionToBlue = (tl) => { // стан 4→5
+      const at0 = tl.duration();
+      [3, 2, 1, 0].forEach((li, k) => tl.to(red.cards[li], { autoAlpha: 0, y: 40, duration: CAS, ease: EASE }, at0 + k * CAS_STAG)); // 4>3>2>1 вниз
+      tl.to(red.gradFill, { autoAlpha: 0, duration: STEP * 0.5, ease: EASE }, at0);
+      tintRed(tl, BLACK30, at0);
+      const afterCascade = at0 + CAS_STAG * 3 + CAS;
+      tl.call(() => setPhaseDisplay(true), null, afterCascade); // червоні display:none, сині в потік → картка 5 до верху
+      if (blue.center) tl.to(blue.center, { autoAlpha: 1, duration: STEP * 0.5, ease: EASE }, afterCascade);
+    };
+    const reverseTransition = (tl) => { // стан 5→4
+      const at0 = tl.duration();
+      if (blue.progFills[0]) tl.to(blue.progFills[0], { width: '0%', duration: STEP * 0.4, ease: EASE }, at0);
+      const bd = blue.dot('1'); if (bd) tl.to(bd, { autoAlpha: 0, duration: STEP * 0.5, ease: EASE }, at0);
+      tl.to(blue.cards[0], { autoAlpha: 0, y: 40, duration: CAS, ease: EASE }, at0);
+      if (blue.center) tl.to(blue.center, { autoAlpha: 0, duration: STEP * 0.4, ease: EASE }, at0);
+      const restore = at0 + CAS;
+      tl.call(() => setPhaseDisplay(false), null, restore); // червоні назад у потік, сині display:none
+      tl.to(red.gradFill, { autoAlpha: 1, duration: STEP, ease: EASE }, restore);
+      tintRed(tl, WHITE, restore);
+      [0, 1, 2, 3].forEach((li, k) => tl.to(red.cards[li], { autoAlpha: 1, y: 0, duration: CAS, ease: EASE }, restore + k * CAS_STAG));
+      setSec(tl, 4, at0);
+    };
+
+    const forwardTo = (tl, s) => {
+      if (s <= 3) addCard(tl, red, s - 1, s);
+      else if (s === 4) addFinal(tl, red, s);
+      else if (s === 5) { transitionToBlue(tl); addCard(tl, blue, 0, s); }
+      else if (s <= 7) addCard(tl, blue, s - 5, s);
+      else if (s === 8) addFinal(tl, blue, s);
+    };
+    const backFrom = (tl, s) => { // зі стану s у s-1
+      if (s === 8) removeFinal(tl, blue, s - 1);
+      else if (s >= 6) removeCard(tl, blue, s - 5, s - 1);
+      else if (s === 5) reverseTransition(tl);
+      else if (s === 4) removeFinal(tl, red, s - 1);
+      else if (s >= 2) removeCard(tl, red, s - 1, s - 1);
+    };
+
+    // Миттєвий стан (persistence/jump): старт або кінець
+    const showStart = () => {
+      api.prepare();
+      gsap.set([left, right], { autoAlpha: 1, y: 0 });
+      gsap.set(red.cards[0], { autoAlpha: 1, y: 0 });
+      const d = red.dot('1'); if (d) gsap.set(d, { autoAlpha: 1 });
+      if (red.progFills[0]) gsap.set(red.progFills[0], { width: pctOf(red, 0) + '%' });
+      if (secFill) gsap.set(secFill, { width: (1 / maxState * 100) + '%' });
+      state = 1;
+    };
+    const showEnd = () => {
+      api.prepare();
+      gsap.set([left, right], { autoAlpha: 1, y: 0 });
+      setPhaseDisplay(true); // синя фаза: червоні картки display:none
+      ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = red.dot(n); if (d) gsap.set(d, { autoAlpha: 1, fill: BLACK30 }); });
+      red.edges.forEach((e, i) => { const m = ensureMask(red.svg, e, i, 'red'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': 0 } }); gsap.set(e, { stroke: BLACK30 }); });
+      if (blue.center) gsap.set(blue.center, { autoAlpha: 1 });
+      ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = blue.dot(n); if (d) gsap.set(d, { autoAlpha: 1 }); });
+      blue.edges.forEach((e, i) => { const m = ensureMask(blue.svg, e, i, 'blue'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': 0 } }); });
+      if (blue.gradFill) gsap.set(blue.gradFill, { autoAlpha: 1 });
+      blue.cards.forEach((c, li) => { gsap.set(c, { autoAlpha: 1, y: 0 }); if (blue.progFills[li]) gsap.set(blue.progFills[li], { width: pctOf(blue, li) + '%' }); });
+      if (secFill) gsap.set(secFill, { width: '100%' });
+      state = maxState;
+    };
+
+    const newTL = () => { app.isAnimating = true; return gsap.timeline({ onComplete: () => { app.isAnimating = false; } }); };
+
+    const api = {
+      prepare() {
+        gsap.set([left, right], { autoAlpha: 0, y: 50 });
+        gsap.set(allCards, { autoAlpha: 0, y: 40 });
+        setPhaseDisplay(false);                                 // старт — червона фаза (сині картки display:none)
+        if (red.center) gsap.set(red.center, { autoAlpha: 1 }); // червоний центр — завжди видимий
+        ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = red.dot(n); if (d) gsap.set(d, { autoAlpha: 0, fill: WHITE }); });
+        red.edges.forEach((e, i) => { const m = ensureMask(red.svg, e, i, 'red'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': m.L } }); gsap.set(e, { stroke: WHITE }); });
+        if (red.gradFill) gsap.set(red.gradFill, { autoAlpha: 0 });
+        if (blue.center) gsap.set(blue.center, { autoAlpha: 0 }); // синій — ВЗАГАЛІ прихований
+        ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = blue.dot(n); if (d) gsap.set(d, { autoAlpha: 0 }); });
+        blue.edges.forEach((e, i) => { const m = ensureMask(blue.svg, e, i, 'blue'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': m.L } }); });
+        if (blue.gradFill) gsap.set(blue.gradFill, { autoAlpha: 0 });
+        red.progFills.concat(blue.progFills).forEach((f) => { if (f) gsap.set(f, { width: '0%' }); });
+        if (secFill) gsap.set(secFill, { width: '0%' });
+        state = 0;
+      },
+      enter() {
+        const tl = newTL();
+        tl.to(left, { autoAlpha: 1, y: 0, duration: SCROLL, ease: EASE }, 0);
+        tl.to(right, { autoAlpha: 1, y: 0, duration: SCROLL, ease: EASE }, 0.1);
+        addCard(tl, red, 0, 1);                                 // авто перший етап у кінці появи
+        state = 1;
+        console.log('[Kulbit-TP] enter → поява left/right + авто крок 1');
+      },
+      step(dir) {
+        if (dir > 0) {
+          if (state >= maxState) return false;                  // межа → наступна секція
+          state++; forwardTo(newTL(), state);
+          console.log('[Kulbit-TP] →', state); return true;
+        }
+        if (state <= 1) return false;                           // стан 1 = перша картка → вгору = попередня секція
+        const s = state; state--; backFrom(newTL(), s);
+        console.log('[Kulbit-TP] ←', state); return true;
+      },
+      reset(toEnd) { if (toEnd) showEnd(); else showStart(); },
+      dispose() {
+        allCards.forEach((c) => { c.style.display = ''; });
+        [secFill].concat(red.progFills, blue.progFills).forEach((f) => { if (f && f.parentNode) f.parentNode.removeChild(f); });
+        [red, blue].forEach((g) => g.edges.forEach((e) => {
+          if (!e) return;
+          e.removeAttribute('mask');
+          if (e.__tpMask && e.__tpMask.clone && e.__tpMask.clone.parentNode) {
+            const mk = e.__tpMask.clone.parentNode; if (mk.parentNode) mk.parentNode.removeChild(mk);
+          }
+          delete e.__tpMask;
+        }));
+        if (bar) { bar.style.backgroundColor = ''; bar.style.position = ''; }
+      }
+    };
+
+    section.tp = api;
+    section.isTraditional = true;
+    api.prepare();
+    console.log('[Kulbit-TP] desktop: секцію змонтовано (maxState ' + maxState + ')');
+  };
+
   // — Стекінг-лейаут (ADR-010): секції абсолютом одна над одною, z-index за індексом.
   //   JS застосовує це в РАНТАЙМІ — у Webflow секції лишаються relative (зручно редагувати).
   app.setupStacking = () => {
@@ -1242,7 +1506,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (clamped > 0) app.passHero(); // йдемо на НЕ-hero → хедер зникає (hero-таймлайн у кінець)
 
     // Стан кроків/таймлайну нової секції
-    if ((target.isOurClients && target.oc) || (target.isProjects && target.pv) || (target.isHSwipe && target.hswipe) || (target.isWP && target.wp)) {
+    if ((target.isOurClients && target.oc) || (target.isProjects && target.pv) || (target.isHSwipe && target.hswipe) || (target.isWP && target.wp) || (target.isTraditional && target.tp)) {
       app.currentStep = 0; // власний стан — у target.oc / target.pv / target.hswipe / target.wp
     } else if (target.isAnimated && target.timeline) {
       const atEnd = dir < 0;                       // вхід знизу → таймлайн у кінці
@@ -1265,6 +1529,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (target.isHSwipe && target.hswipe) target.hswipe.reset(dir < 0); // миттєвий стан горизонт. свапу
       if (target.isWP && target.wp) target.wp.reset(dir < 0);         // миттєвий стан wp-карток
       if (target.isFooter && target.ft) target.ft.reset();            // футер — завжди з верху
+      if (target.isTraditional && target.tp) target.tp.reset(dir < 0); // traditional: старт (вниз) / кінець (вгору)
       if (app.updateVideoVisibility) app.updateVideoVisibility();
       return;
     }
@@ -1289,6 +1554,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (target.isHSwipe && target.hswipe) target.hswipe.prepare(); // is-our-services: картки приховано
       if (target.isWP && target.wp) target.wp.prepare();            // is-working-process: миттєво стартовий стек
       if (target.isFooter && target.ft) target.ft.reset();          // футер наповзає з верху (pos 0)
+      if (target.isTraditional && target.tp) target.tp.prepare();   // traditional: прихований стан до появи
       gsap.to(target.el, {
         yPercent: 0,
         duration: app.config.scrollDuration, ease: app.config.ease,
@@ -1298,6 +1564,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
           if (target.isProjects && target.pv) target.pv.enter();
           if (target.isHSwipe && target.hswipe) target.hswipe.enter(); // is-our-services: картки виїжджають
           if (target.isWP && target.wp) target.wp.enter();          // is-working-process: підтвердити стек
+          if (target.isTraditional && target.tp) target.tp.enter(); // traditional: поява left/right + авто крок 1
         }
       });
     } else {
@@ -1308,6 +1575,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       if (target.isProjects && target.pv) target.pv.reset(true);   // is-projects: відкривають на END-картинці
       if (target.isHSwipe && target.hswipe) target.hswipe.reset(true); // is-our-services: відкривають на останній картці
       if (target.isWP && target.wp) target.wp.reset(true);            // is-working-process: відкривають на останній картці
+      if (target.isTraditional && target.tp) target.tp.reset(true);   // traditional: відкривають на кінці (синя фаза)
       // Секція, що сповзає геть → її прогрес-лінія плавно згортається разом із нею (фікс бага)
       const leaving = app.sections[prev];
       if (leaving.isOurClients && leaving.oc && leaving.oc.collapse) leaving.oc.collapse();
@@ -1387,6 +1655,13 @@ console.log('[Kulbit] 03-sections.js завантажено');
     if (section.isFooter && section.ft) {
       if (section.ft.step(dir)) return;                       // крок скролу оброблено
       app.goToSection(app.currentSectionIndex + dir, false, dir); // верх футера → попередня секція
+      return;
+    }
+
+    // is-traditional-production: дворежимна секція (червона/синя фази) — section.tp (поки DESKTOP)
+    if (section.isTraditional && section.tp) {
+      if (section.tp.step(dir)) return;                       // крок усередині секції оброблено
+      app.goToSection(app.currentSectionIndex + dir, false, dir); // межа → сусідня секція
       return;
     }
 
