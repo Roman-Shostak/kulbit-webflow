@@ -418,14 +418,23 @@ https://purge.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main
 
 Підставляєш короткий хеш свіжого коміту (напр. `@9931dd6`), тестуєш одразу, потім повертаєш `@main` коли кеш розсмокчеться. **Актуальний бандл — на `0d35cbf`** — для commit-pinned тесту коду підставляй саме `@0d35cbf`. _Стабільна база: hero + is-our-clients + is-projects (усі девайси) + контролі відео + персистентність + поворот не ламає + **кнопки-автопрогравання** + **scramble за атрибутом** (`11-scramble.js`, ADR-017) + **is-our-services горизонтальний свап карток** (ADR-018) + **is-working-process картки + SVG-reveal** (ADR-019 + SVG-ітерація: поява діаграми + step-синхрон стрілок/крапок, desktop/tablet повна / mobile спрощено). Усе підтверджено Romanom (desktop + iPhone)._
 
-> ⚠️ **Урок (регресія скролу 26.05.2026 — для майбутнього re-approach):** у `buildProjects` `section` = запис `app.sections` `{el, index, …}`, а НЕ DOM-елемент. `getComputedStyle(section)` кинув помилку → `registerAnimations` (matchMedia) впав ДО `setupObserver` → зник скрол на всьому сайті. Уроки: (1) у `buildProjects`/`build*` для DOM-операцій брати `section.el`, не `section`; (2) варто залишити захист — `init` обгортає `registerAnimations` у try/catch, щоб помилка білду не вбивала Observer (було в `c7b8470`, відкочено разом з рештою — повернути при re-approach).
+> ⚠️ **Урок (регресія скролу 26.05.2026 — для майбутнього re-approach):** у `buildProjects` `section` = запис `app.sections` `{el, index, …}`, а НЕ DOM-елемент. `getComputedStyle(section)` кинув помилку → `registerAnimations` (matchMedia) впав ДО `setupObserver` → зник скрол на всьому сайті. Уроки: (1) у `buildProjects`/`build*` для DOM-операцій брати `section.el`, не `section`; (2) захист — `init` обгортає `registerAnimations` у try/catch, щоб помилка білду не вбивала Observer. ✅ **РЕАЛІЗОВАНО `e56e414`** (аудит коду 04.06.2026).
+
+### Гілки git: `main` (дев) + `prod` (стабільна) — рішення 04.06.2026
+
+- **`main`** — дев-гілка: тут уся розробка/коміти; staging тягне `@main/dist/kulbit-main.js` (DEV, з логами).
+- **`prod`** — стабільна продакшн-гілка: оновлюється ТІЛЬКИ свідомим релізом; продакшн тягне `@prod/dist/kulbit-main.min.js` (чистий, 0 console).
+- **Реліз (дев → прод):** `git checkout prod && git merge main && git push && git checkout main`, потім purge jsDelivr для `@prod`. Так продакшн не ловить недотестовані дев-коміти.
 
 ### Підключення в Webflow
 
 **Project Settings → Custom Code → Footer Code:**
 
 ```html
-<!-- Kulbit — кастомні скрипти -->
+<!-- ПРОДАКШН (стабільна гілка prod, мініфіковано) -->
+<script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@prod/dist/kulbit-main.min.js"></script>
+
+<!-- STAGING/ТЕСТ (гілка main, з логами; для миттєвого тесту — @<commit-hash>) -->
 <script src="https://cdn.jsdelivr.net/gh/Roman-Shostak/kulbit-webflow@main/dist/kulbit-main.js"></script>
 ```
 
