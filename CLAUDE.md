@@ -243,7 +243,8 @@ kulbit-webflow/
 │   ├── 09-button-border.js      # Ховер: промальовка бордера від точки курсора ([data-kulbit-border])
 │   ├── 10-project-video.js      # Vimeo-плеєр проєктів: cover + кастомні контроли ([data-kulbit-project-video], ADR-014)
 │   ├── 11-scramble.js           # Скрамбл-поява тексту за атрибутом [data-kulbit-scramble] (ADR-017)
-│   └── 12-hero-vh.js            # Фікс висоти .section.is-hero через visualViewport (був інлайн у Webflow)
+│   ├── 12-hero-vh.js            # Фікс висоти .section.is-hero через visualViewport (був інлайн у Webflow)
+│   └── 13-misc.js              # Дрібні утиліти сторінки (рік копірайту #copyright-year; були інлайн у Webflow)
 │
 └── dist/                        # Збірка для Webflow (генерується) — ДВІ версії
     ├── kulbit-main.js           # DEV (логи) — staging/тести
@@ -514,7 +515,7 @@ chore: оновив build.js
 - [x] **Кнопки-навігація = автопрогравання** — ✅ клік швидко прокручує всі кроки+переходи до цілі (як fullpage), header зникає (`autoAdvanceTo`/`passHero`, ADR-003, `b92db74`)
 - [x] **Скрамбл на атрибут** (ADR-017) + **is-our-services горизонтальний свап** (ADR-018) — ✅ усі брейкпоінти (`b23760b`..`481b16c`)
 - [~] **Крок 6:** решта секцій + footer — Roman верстає (анімуємо по готовності — атрибути ADR-009 / reveal / hswipe / scramble-атрибут)
-- [ ] **Крок 9:** попап-форма (`07-popup-form.js`)
+- [ ] **Крок 9:** попап-форма (`07-popup-form.js`). ⚠️ Блокування скролу при відкритому попапі — НЕ через body `overflow:hidden`/Lenis (інлайн `[scroll-disable-element]` був Lenis-залишком темплейта, інертний у нас), а через `app.observer.disable()` / `.enable()` (як landscape-попап у `06-responsive.js`).
 - [ ] **Крок 10:** фінальний поліш; **Крок 11:** клієнтське демо; **Крок 12:** продакшн-домен
 
 ### 🔖 Точка відновлення (04.06.2026 — is-traditional-production (ADR-021) + dual-build + аудит)
