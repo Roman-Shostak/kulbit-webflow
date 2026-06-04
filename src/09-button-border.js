@@ -62,6 +62,14 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       const sw = parseFloat(cs.outlineWidth) || parseFloat(cs.borderTopWidth) || 2;
       const r = parseFloat(cs.borderTopLeftRadius) || 0; // радіус кутів
 
+      // Елемент без лейауту (offsetWidth/Height = 0: display:none / прихований на цьому брейкпоінті,
+      //   напр. mobile-only/mobile-hide кнопки футера) — НЕ будуємо rect: інакше width/height = -sw
+      //   (від'ємне → SVG-помилка). Перебудуємо на resize, коли елемент стане видимим.
+      if (w <= 0 || h <= 0) {
+        if (state.svg) { state.svg.remove(); state.svg = null; state.rect = null; }
+        return;
+      }
+
       if (state.svg) state.svg.remove();
 
       const svg = document.createElementNS(NS, 'svg');
@@ -82,8 +90,8 @@ console.log('[Kulbit] 09-button-border.js завантажено');
       const rect = document.createElementNS(NS, 'rect');
       rect.setAttribute('x', i - off);                    // off>0 → штрих назовні від центру бордера
       rect.setAttribute('y', i - off);
-      rect.setAttribute('width', (w - sw) + 2 * off);
-      rect.setAttribute('height', (h - sw) + 2 * off);
+      rect.setAttribute('width', Math.max(0, (w - sw) + 2 * off));   // захист від від'ємного (тонкі/межові box)
+      rect.setAttribute('height', Math.max(0, (h - sw) + 2 * off));
       rect.setAttribute('rx', Math.max(0, r - i + off));
       rect.setAttribute('fill', 'none');
       rect.setAttribute('stroke', blue);
@@ -129,6 +137,8 @@ console.log('[Kulbit] 09-button-border.js завантажено');
     let hovered = false, focused = false;
 
     el.addEventListener('mouseenter', (e) => {
+      if (!state.rect) build();   // став видимим без resize — добудуємо оверлей на першому ховері
+      if (!state.rect) return;    // усе ще без лейауту — пропускаємо
       hovered = true;
       state.mode = 'hover';
       state.center = offsetFromMouse(e); // ховер — промальовка від точки курсора
