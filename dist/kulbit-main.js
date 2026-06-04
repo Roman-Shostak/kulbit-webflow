@@ -1,4 +1,4 @@
-/* Kulbit Webflow — dev build (з логами) — 2026-06-04T14:15:54.129Z */
+/* Kulbit Webflow — dev build (з логами) — 2026-06-04T15:47:07.570Z */
 
 // ====================================================================
 // 01-init.js — Реєстрація GSAP-плагінів
@@ -60,6 +60,7 @@ console.log('[Kulbit] 02-app-core.js завантажено');
     scrollDuration: 0.7,       // тривалість переходу між секціями
     stepDuration: 0.6,         // тривалість кроку покрокової анімації (Крок 5)
     autoPlayStepDuration: 0.3, // швидке догравання при кліку на кнопку (Крок 4)
+    anchorDuration: 1,         // якірний перехід (кнопки): СТАЛА тривалість незалежно від відстані (ADR-003)
     ease: 'power2.inOut',      // easing переходів
     accelRatio: 1.4,           // у скільки разів має зрости швидкість, щоб вважати НОВИМ фліком
     minVelocity: 60,           // нижче цієї швидкості — «дотихання» інерції, ігноруємо
@@ -257,6 +258,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildProjects('tablet');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
       app.buildHSwipe('tablet');                         // is-our-services: горизонтальний свап карток
       app.buildWorkingProcess('tablet');                 // is-working-process: stack-cards (Z-stack)
+      app.buildTraditional('tablet');                    // is-traditional-production: вікно 2 картки (ADR-021)
       app.buildFooterScroll('tablet');                   // footer: покроковий скрол якщо переповнює (ADR-020)
       app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
@@ -268,6 +270,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       app.buildProjects('mobile');                       // is-projects: свап вікном 3 (ADR-016 re-approach)
       app.buildHSwipe('mobile');                         // is-our-services: горизонтальний свап карток
       app.buildWorkingProcess('mobile');                 // is-working-process: stack-cards (Z-stack)
+      app.buildTraditional('mobile');                    // is-traditional-production: вікно 2 картки (ADR-021)
       app.buildFooterScroll('mobile');                   // footer: покроковий скрол якщо переповнює (ADR-020)
       app.restoreSection();                              // персистентність: відновити позицію
       return () => app.teardownHero();
@@ -1337,19 +1340,17 @@ console.log('[Kulbit] 03-sections.js завантажено');
     console.log('[Kulbit-Footer] ' + mode + ': скрол змонтовано — maxShift', maxShift, 'крок', stepPx);
   };
 
-  // 03i — Traditional Production (section.tp, ADR-021, поки DESKTOP): радар-порівняння
-  //   Traditional(red)/KULBIT(blue) — два пʼятикутники (накладені) + дві групи по 4 картки.
-  //   Червона фаза (1-4): поява left/right (+ авто крок1) → картки виїжджають, зʼявляються крапки,
-  //     card-progres наповнюється до % (data-kulbit-progress); крок4 — картка+лінія+градієнт одночасно.
-  //   Перехід (4→5): червоні картки 4>3>2>1 каскадом зникають (display:none → 5-та до верху),
-  //     червоний svg гасне (градієнт геть + крапки[крім центру]/лінія → black-30).
-  //   Синя фаза (5-8): дзеркало червоної на синьому svg (на старті синій ВЗАГАЛІ прихований).
-  //   Пунктир «малюється» клон-маскою + dashoffset (як біла стрілка WP). Tablet/mobile — наступним кроком.
+  // 03i — Traditional Production (section.tp, ADR-021): радар-порівняння Traditional(red)/KULBIT(blue).
+  //   Картки показуються «вікном» pageSize (desktop=4 / tablet+mobile=2); на межі сторінки поточні
+  //   каскадом зникають (display:none → перша наступної сторінки до верху), тоді наступні. SVG однаковий
+  //   на всіх брейкпоінтах: крапка на картку, red-лінія на картці4, гасіння red→blue на 4→5 (+ скрамбл
+  //   заголовка Traditional→KULBIT та перефарбування іконки), blue-лінія на картці8. Третя група (9+) —
+  //   БЕЗ SVG і БЕЗ прогресу (svg заморожений). Пунктир «малюється» клон-маскою + dashoffset (як WP-стрілка).
   app.buildTraditional = (mode) => {
-    if (mode !== 'desktop') return; // поки фіксуємо лише desktop
     const section = app.sections.find((s) => s.el.classList.contains('is-traditional-production'));
     if (!section) return;
     const el = section.el;
+    const pageSize = mode === 'desktop' ? 4 : 2;              // вікно карток: desktop 4, tablet/mobile 2
 
     const left = el.querySelector('.traditional-production-left');
     const right = el.querySelector('.traditional-production-right');
@@ -1359,12 +1360,18 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const DEMO_PCT = [40, 65, 55, 85];                         // запасні %, поки нема data-kulbit-progress
 
     const STEP = app.config.stepDuration, SCROLL = app.config.scrollDuration, EASE = app.config.ease;
-    const LINE_TOTAL = 0.85, CAS = STEP * 0.5, CAS_STAG = 0.12, maxState = 8;
+    const LINE_TOTAL = 0.85, CAS = STEP * 0.5, CAS_STAG = 0.12, maxState = allCards.length;
     let state = 0;
 
     const cssVar = (n, fb) => { const v = getComputedStyle(el).getPropertyValue(n).trim(); return v || fb; };
     const WHITE = cssVar('--colors--white', 'white');
     const BLACK30 = cssVar('--colors--black-30', '#252525');
+    const RED = cssVar('--colors--red', '#f44');
+    const WHITE10 = cssVar('--colors--white-10', '#fdfcfc');
+    const headEl = el.querySelector('.traditional-production-head');
+    const headPara = headEl && headEl.querySelector('.text-size-production-head:not(.is-second)'); // видимий «Traditional»
+    const headSecond = headEl && headEl.querySelector('.text-size-production-head.is-second');      // прихований «KULBIT»
+    const headIcon = headEl && headEl.querySelector('.background-color-red');
 
     // Маска «малювання» пунктирного сегмента (солід-клон + dashoffset)
     const NS = 'http://www.w3.org/2000/svg';
@@ -1412,6 +1419,10 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const red = buildGroup('.traditional-production-svg:not(.is-blue) svg', allCards.slice(0, 4), 'red');
     const blue = buildGroup('.traditional-production-svg.is-blue svg', allCards.slice(4, 8), 'blue');
     if (!red || !blue) { console.warn('[Kulbit-TP] немає red/blue групи — пропускаємо'); return; }
+    // Третя група (картки 9+) — БЕЗ SVG і БЕЗ прогрес-бару: лише поява карток по черзі
+    const plain = { svg: null, key: 'plain', cards: allCards.slice(8), dot: () => null, center: null, edges: [], gradFill: null, totalLen: 1, progFills: allCards.slice(8).map(() => null) };
+    const groupOf = (s) => (s <= 4 ? red : s <= 8 ? blue : plain);
+    const liOf = (s) => (s <= 4 ? s - 1 : s <= 8 ? s - 5 : s - 9);
 
     // Прогрес-бар секції (трек + дочірня лінія, як oc/hswipe)
     let secFill = null;
@@ -1430,6 +1441,62 @@ console.log('[Kulbit] 03-sections.js завантажено');
     };
     const edgeDur = (g, L) => Math.max(0.04, (L / g.totalLen) * LINE_TOTAL);
     const setSec = (tl, s, at) => { if (secFill) tl.to(secFill, { width: (s / maxState * 100) + '%', duration: STEP, ease: EASE }, at); };
+
+    // — Скрамбл-перепис заголовка (механіка з is-our-clients): Traditional <-> KULBIT по сегментах + іконка
+    const SC = (chars, speed) => ({ chars: chars || 'upperCase', speed: speed || 1 });
+    const parseSegments = (e) => {
+      const segs = [];
+      e.childNodes.forEach((n) => {
+        if (n.nodeType === 3) segs.push([n.textContent, '']);
+        else if (n.nodeType === 1) segs.push([n.textContent, n.getAttribute('class') || '']);
+      });
+      return segs;
+    };
+    const buildSegDOM = (c, segs, fillText) => {
+      c.textContent = '';
+      const targets = [];
+      let pend = false;
+      segs.forEach((seg) => {
+        const raw = seg[0], cls = seg[1];
+        const lead = /^\s/.test(raw), trail = /\s$/.test(raw);
+        const t = raw.replace(/\s+/g, ' ').trim();
+        if (lead) pend = true;
+        if (t) {
+          if (pend) c.appendChild(document.createTextNode(' '));
+          pend = false;
+          const s = document.createElement('span');
+          if (cls) s.className = cls;
+          if (fillText) s.textContent = t;
+          c.appendChild(s);
+          targets.push([s, t]);
+        }
+        if (trail) pend = true;
+      });
+      return targets;
+    };
+    const morphParagraph = (p, segs) => {
+      if (typeof ScrambleTextPlugin === 'undefined') { buildSegDOM(p, segs, true); return; } // фолбек без плагіна
+      gsap.killTweensOf(p);
+      gsap.to(p, {
+        duration: 0.35, scrambleText: { text: '', ...SC('upperCase', 3) },
+        onComplete: () => buildSegDOM(p, segs, false).forEach((pair) => gsap.to(pair[0], { duration: 0.6, scrambleText: { text: pair[1], ...SC() } }))
+      });
+    };
+    const traditionalSegs = headPara ? parseSegments(headPara) : [];
+    const kulbitSegs = headSecond ? parseSegments(headSecond) : [];
+    // toBlue: true → KULBIT, false → Traditional. tl задано → скрамбл у таймлайні; інакше → миттєво
+    const swapHead = (toBlue, tl, at) => {
+      if (!headPara) return;
+      const apply = () => { headPara.classList[toBlue ? 'remove' : 'add']('text-color-red'); }; // KULBIT — без червоного базового
+      if (tl) {
+        tl.call(() => { apply(); morphParagraph(headPara, toBlue ? kulbitSegs : traditionalSegs); }, null, at);
+        if (headIcon) tl.to(headIcon, { backgroundColor: toBlue ? WHITE10 : RED, duration: STEP, ease: EASE }, at);
+      } else {
+        apply();
+        buildSegDOM(headPara, toBlue ? kulbitSegs : traditionalSegs, true);
+        if (headIcon) gsap.set(headIcon, { backgroundColor: toBlue ? WHITE10 : RED });
+      }
+    };
 
     // Будівельні блоки таймлайну (gState = глобальний стан для прогрес-бара)
     const addCard = (tl, g, li, gState) => {
@@ -1467,51 +1534,45 @@ console.log('[Kulbit] 03-sections.js завантажено');
       setSec(tl, gAfter, at0);
     };
 
-    // Кожна фаза тримає в ПОТОЦІ лише свої 4 картки → перша картка фази притиснута до верху
-    const setPhaseDisplay = (bluePhase) => {
-      red.cards.forEach((c) => { c.style.display = bluePhase ? 'none' : ''; });
-      blue.cards.forEach((c) => { c.style.display = bluePhase ? '' : 'none'; });
-    };
     const tintRed = (tl, color, at) => { // кольори червоного svg (крапки[крім центру] + лінія)
       ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = red.dot(n); if (d) tl.to(d, { fill: color, duration: STEP, ease: EASE }, at); });
       red.edges.forEach((e) => tl.to(e, { stroke: color, duration: STEP, ease: EASE }, at));
     };
-    const transitionToBlue = (tl) => { // стан 4→5
-      const at0 = tl.duration();
-      [3, 2, 1, 0].forEach((li, k) => tl.to(red.cards[li], { autoAlpha: 0, y: 40, duration: CAS, ease: EASE }, at0 + k * CAS_STAG)); // 4>3>2>1 вниз
-      tl.to(red.gradFill, { autoAlpha: 0, duration: STEP * 0.5, ease: EASE }, at0);
-      tintRed(tl, BLACK30, at0);
-      const afterCascade = at0 + CAS_STAG * 3 + CAS;
-      tl.call(() => setPhaseDisplay(true), null, afterCascade); // червоні display:none, сині в потік → картка 5 до верху
-      if (blue.center) tl.to(blue.center, { autoAlpha: 1, duration: STEP * 0.5, ease: EASE }, afterCascade);
-    };
-    const reverseTransition = (tl) => { // стан 5→4
-      const at0 = tl.duration();
-      if (blue.progFills[0]) tl.to(blue.progFills[0], { width: '0%', duration: STEP * 0.4, ease: EASE }, at0);
-      const bd = blue.dot('1'); if (bd) tl.to(bd, { autoAlpha: 0, duration: STEP * 0.5, ease: EASE }, at0);
-      tl.to(blue.cards[0], { autoAlpha: 0, y: 40, duration: CAS, ease: EASE }, at0);
-      if (blue.center) tl.to(blue.center, { autoAlpha: 0, duration: STEP * 0.4, ease: EASE }, at0);
-      const restore = at0 + CAS;
-      tl.call(() => setPhaseDisplay(false), null, restore); // червоні назад у потік, сині display:none
-      tl.to(red.gradFill, { autoAlpha: 1, duration: STEP, ease: EASE }, restore);
-      tintRed(tl, WHITE, restore);
-      [0, 1, 2, 3].forEach((li, k) => tl.to(red.cards[li], { autoAlpha: 1, y: 0, duration: CAS, ease: EASE }, restore + k * CAS_STAG));
-      setSec(tl, 4, at0);
-    };
+    // Сторінки по pageSize карток (у потоці лише поточна; решта display:none → перша до верху)
+    const pages = [];
+    for (let i = 0; i < allCards.length; i += pageSize) pages.push(allCards.slice(i, i + pageSize));
+    const pageOfState = (s) => Math.floor((s - 1) / pageSize);
+    const setPageDisplay = (idx) => { allCards.forEach((c) => { c.style.display = 'none'; }); (pages[idx] || []).forEach((c) => { c.style.display = ''; }); };
+    const cascadeOut = (tl, cardEls, at0) => { const arr = cardEls.slice().reverse(); arr.forEach((c, k) => tl.to(c, { autoAlpha: 0, y: 40, duration: CAS, ease: EASE }, at0 + k * CAS_STAG)); return at0 + (arr.length - 1) * CAS_STAG + CAS; };
+    const cascadeIn = (tl, cardEls, at0) => { cardEls.forEach((c, k) => tl.to(c, { autoAlpha: 1, y: 0, duration: CAS, ease: EASE }, at0 + k * CAS_STAG)); };
+    const deactivateRed = (tl, at) => { tl.to(red.gradFill, { autoAlpha: 0, duration: STEP * 0.5, ease: EASE }, at); tintRed(tl, BLACK30, at); };
+    const reactivateRed = (tl, at) => { tl.to(red.gradFill, { autoAlpha: 1, duration: STEP, ease: EASE }, at); tintRed(tl, WHITE, at); };
 
     const forwardTo = (tl, s) => {
-      if (s <= 3) addCard(tl, red, s - 1, s);
-      else if (s === 4) addFinal(tl, red, s);
-      else if (s === 5) { transitionToBlue(tl); addCard(tl, blue, 0, s); }
-      else if (s <= 7) addCard(tl, blue, s - 5, s);
-      else if (s === 8) addFinal(tl, blue, s);
+      const crossing = s > 1 && pageOfState(s) !== pageOfState(s - 1);
+      const crossingSvg = s === 5;                            // red → blue (завжди на 4→5)
+      if (crossing) {
+        const at0 = tl.duration();
+        const endC = cascadeOut(tl, pages[pageOfState(s - 1)], at0); // поточна сторінка каскадом геть
+        if (crossingSvg) deactivateRed(tl, at0);             // гасіння червоного (лише на 4→5)
+        tl.call(() => setPageDisplay(pageOfState(s)), null, endC);   // нова сторінка в потік
+        if (crossingSvg && blue.center) tl.to(blue.center, { autoAlpha: 1, duration: STEP * 0.5, ease: EASE }, endC);
+        if (crossingSvg) swapHead(true, tl, endC);           // заголовок → KULBIT (скрамбл) + іконка white-10
+      }
+      const g = groupOf(s), li = liOf(s);
+      if (s === 4 || s === 8) addFinal(tl, g, s); else addCard(tl, g, li, s); // 4/8 — з лінією; решта (вкл. 9+) — без
     };
     const backFrom = (tl, s) => { // зі стану s у s-1
-      if (s === 8) removeFinal(tl, blue, s - 1);
-      else if (s >= 6) removeCard(tl, blue, s - 5, s - 1);
-      else if (s === 5) reverseTransition(tl);
-      else if (s === 4) removeFinal(tl, red, s - 1);
-      else if (s >= 2) removeCard(tl, red, s - 1, s - 1);
+      const g = groupOf(s), li = liOf(s);
+      const crossing = pageOfState(s) !== pageOfState(s - 1);
+      const crossingSvg = s === 5;
+      if (s === 4 || s === 8) removeFinal(tl, g, s - 1); else removeCard(tl, g, li, s - 1);
+      if (crossing) {
+        const at = tl.duration();
+        if (crossingSvg) { if (blue.center) tl.to(blue.center, { autoAlpha: 0, duration: STEP * 0.4, ease: EASE }, at); reactivateRed(tl, at); swapHead(false, tl, at); }
+        tl.call(() => setPageDisplay(pageOfState(s - 1)), null, at);
+        cascadeIn(tl, pages[pageOfState(s - 1)], at);
+      }
     };
 
     // Миттєвий стан (persistence/jump): старт або кінець
@@ -1527,14 +1588,15 @@ console.log('[Kulbit] 03-sections.js завантажено');
     const showEnd = () => {
       api.prepare();
       gsap.set([left, right], { autoAlpha: 1, y: 0 });
-      setPhaseDisplay(true); // синя фаза: червоні картки display:none
+      setPageDisplay(pages.length - 1); // остання сторінка в потоці
       ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = red.dot(n); if (d) gsap.set(d, { autoAlpha: 1, fill: BLACK30 }); });
       red.edges.forEach((e, i) => { const m = ensureMask(red.svg, e, i, 'red'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': 0 } }); gsap.set(e, { stroke: BLACK30 }); });
       if (blue.center) gsap.set(blue.center, { autoAlpha: 1 });
       ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = blue.dot(n); if (d) gsap.set(d, { autoAlpha: 1 }); });
       blue.edges.forEach((e, i) => { const m = ensureMask(blue.svg, e, i, 'blue'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': 0 } }); });
       if (blue.gradFill) gsap.set(blue.gradFill, { autoAlpha: 1 });
-      blue.cards.forEach((c, li) => { gsap.set(c, { autoAlpha: 1, y: 0 }); if (blue.progFills[li]) gsap.set(blue.progFills[li], { width: pctOf(blue, li) + '%' }); });
+      plain.cards.forEach((c, li) => { gsap.set(c, { autoAlpha: 1, y: 0 }); if (plain.progFills[li]) gsap.set(plain.progFills[li], { width: pctOf(plain, li) + '%' }); }); // третя група видима
+      swapHead(true, null); // кінець — заголовок «KULBIT» + іконка white-10
       if (secFill) gsap.set(secFill, { width: '100%' });
       state = maxState;
     };
@@ -1545,7 +1607,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       prepare() {
         gsap.set([left, right], { autoAlpha: 0, y: 50 });
         gsap.set(allCards, { autoAlpha: 0, y: 40 });
-        setPhaseDisplay(false);                                 // старт — червона фаза (сині картки display:none)
+        setPageDisplay(0);                                      // старт — перша сторінка (червона)
         if (red.center) gsap.set(red.center, { autoAlpha: 1 }); // червоний центр — завжди видимий
         ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = red.dot(n); if (d) gsap.set(d, { autoAlpha: 0, fill: WHITE }); });
         red.edges.forEach((e, i) => { const m = ensureMask(red.svg, e, i, 'red'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': m.L } }); gsap.set(e, { stroke: WHITE }); });
@@ -1554,8 +1616,9 @@ console.log('[Kulbit] 03-sections.js завантажено');
         ['1', '2', '3-1', '3-2', '4'].forEach((n) => { const d = blue.dot(n); if (d) gsap.set(d, { autoAlpha: 0 }); });
         blue.edges.forEach((e, i) => { const m = ensureMask(blue.svg, e, i, 'blue'); gsap.set(m.clone, { attr: { 'stroke-dashoffset': m.L } }); });
         if (blue.gradFill) gsap.set(blue.gradFill, { autoAlpha: 0 });
-        red.progFills.concat(blue.progFills).forEach((f) => { if (f) gsap.set(f, { width: '0%' }); });
+        red.progFills.concat(blue.progFills, plain.progFills).forEach((f) => { if (f) gsap.set(f, { width: '0%' }); });
         if (secFill) gsap.set(secFill, { width: '0%' });
+        swapHead(false, null);                                  // заголовок миттєво «Traditional» + іконка red
         state = 0;
       },
       enter() {
@@ -1579,7 +1642,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
       reset(toEnd) { if (toEnd) showEnd(); else showStart(); },
       dispose() {
         allCards.forEach((c) => { c.style.display = ''; });
-        [secFill].concat(red.progFills, blue.progFills).forEach((f) => { if (f && f.parentNode) f.parentNode.removeChild(f); });
+        [secFill].concat(red.progFills, blue.progFills, plain.progFills).forEach((f) => { if (f && f.parentNode) f.parentNode.removeChild(f); });
         [red, blue].forEach((g) => g.edges.forEach((e) => {
           if (!e) return;
           e.removeAttribute('mask');
@@ -1595,7 +1658,7 @@ console.log('[Kulbit] 03-sections.js завантажено');
     section.tp = api;
     section.isTraditional = true;
     api.prepare();
-    console.log('[Kulbit-TP] desktop: секцію змонтовано (maxState ' + maxState + ')');
+    console.log('[Kulbit-TP] ' + mode + ': секцію змонтовано (' + maxState + ' карток, pageSize ' + pageSize + ')');
   };
 
   // — Стекінг-лейаут (ADR-010): секції абсолютом одна над одною, z-index за індексом.
@@ -1866,31 +1929,19 @@ console.log('[Kulbit] 03-sections.js завантажено');
     app.goToSection(app.currentSectionIndex + dir, false, dir);
   };
 
-  // 09b — Кнопкове автопрогравання (ADR-003): швидко «прокрутити» УСІ кроки анімацій + переходи
-  //        секцій по черзі до цільової — як fullpage. Прискорюємо config на час послідовності,
-  //        блокуємо ввід (Observer). Зупиняємось щойно дійшли до цільової секції (на її початку).
+  // 09b — Кнопковий ЯКІРНИЙ перехід (ADR-003): ОДИН плавний стрибок до цільової секції зі СТАЛОЮ
+  //        тривалістю (config.anchorDuration), НЕЗАЛЕЖНО від відстані (як звичайний smooth-якір на сайті).
+  //        Проміжні секції миттєво в стек (через goToSection), ціль наповзає; НЕ прокручуємо всі кроки
+  //        (раніше timeScale(3)-прогортування було надто довгим для далеких цілей).
   app.autoAdvanceTo = (targetIndex) => {
     const t = Math.max(0, Math.min(targetIndex, app.sections.length - 1));
-    if (app.autoPlaying || t === app.currentSectionIndex) return;
+    if (t === app.currentSectionIndex || app.isAnimating) return; // вже там / йде перехід
     const dir = t > app.currentSectionIndex ? 1 : -1;
-    app.autoPlaying = true;
-    if (app.observer) app.observer.disable();          // ввід OFF на час прогортування
-    gsap.globalTimeline.timeScale(3);                  // прискорюємо ВСІ анімації (кроки + переходи) рівномірно
-    const finishAuto = () => {
-      gsap.globalTimeline.timeScale(1);
-      app.autoPlaying = false;
-      if (app.observer) app.observer.enable();
-      console.log('[Kulbit-Nav] авто-перехід завершено на секції', app.currentSectionIndex);
-    };
-    let guard = 0;
-    const tick = () => {                               // setTimeout — реальний час (не під timeScale)
-      if (app.currentSectionIndex === t) { finishAuto(); return; }
-      if (++guard > 300) { console.warn('[Kulbit-Nav] авто-перехід: ліміт кроків'); finishAuto(); return; }
-      if (app.isAnimating) { setTimeout(tick, 25); return; } // чекаємо завершення поточного кроку
-      app.advance(dir);                                      // наступний крок або перехід секції
-      setTimeout(tick, 50);
-    };
-    tick();
+    const saved = app.config.scrollDuration;
+    app.config.scrollDuration = app.config.anchorDuration;        // СТАЛА тривалість стрибка
+    app.goToSection(t, false, dir);                              // ціль читає anchorDuration синхронно
+    app.config.scrollDuration = saved;                           // повертаємо (поява секції — звичайна швидкість)
+    console.log('[Kulbit-Nav] якірний перехід → секція', t, '(' + app.config.anchorDuration + 's, стало)');
   };
 
   // 10 — Перехід на секцію + конкретний крок (для кнопок data-target-step), стекінг.
